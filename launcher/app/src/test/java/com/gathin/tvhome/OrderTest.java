@@ -12,7 +12,7 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
-/** Plain JVM tests for the saved tile order: file format, dock_apps reset and the sort step. */
+/** Plain JVM tests for the saved tile order: file format, theme changes and the sort step. */
 public class OrderTest {
 
     private static final List<String> DOCK = Arrays.asList("com.plexapp.android", "com.netflix.ninja");
@@ -45,10 +45,10 @@ public class OrderTest {
     }
 
     @Test
-    public void dockedFollowsTheDockAppsCheck() {
+    public void dockedSurvivesChangedDockDefaults() {
         Order o = new Order(Order.dockKey(DOCK), Arrays.asList("b/.B", "a/.A"), 1);
         assertEquals(1, Order.docked(o, DOCK));
-        assertEquals(-1, Order.docked(o, Collections.singletonList("com.plexapp.android")));
+        assertEquals(1, Order.docked(o, Collections.singletonList("com.plexapp.android")));
         assertEquals(-1, Order.docked(null, DOCK));
     }
 
@@ -86,11 +86,38 @@ public class OrderTest {
     }
 
     @Test
-    public void changedDockAppsDropTheSavedOrder() {
-        Order o = new Order(Order.dockKey(DOCK), Arrays.asList("b/.B", "a/.A"));
-        assertTrue(Order.ranks(o, Arrays.asList("com.netflix.ninja", "com.plexapp.android")).isEmpty());
-        assertTrue(Order.ranks(o, Collections.singletonList("com.plexapp.android")).isEmpty());
+    public void changedThemeDockKeepsSavedOrder() {
+        Order o = new Order(Order.dockKey(DOCK), Arrays.asList("b/.B", "a/.A"), 1);
+        assertEquals(Order.ranks(o, DOCK), Order.ranks(o, Collections.singletonList("other")));
+        assertEquals(1, Order.docked(o, Collections.singletonList("other")));
         assertTrue(Order.ranks(null, DOCK).isEmpty());
+    }
+
+    @Test
+    public void editsKeepUnavailableDockAndGridAppsForTheirReturn() {
+        Order old = new Order("old", Arrays.asList("dock/.A", "gone/.B", "grid/.C", "gone/.D", "grid/.E"), 2);
+        Order saved = Order.mergeUnavailable(old, "new", Arrays.asList("grid/.C", "dock/.A", "grid/.E", "new/.F"), 1);
+        assertEquals(Arrays.asList("grid/.C", "gone/.B", "dock/.A", "gone/.D", "grid/.E", "new/.F"), saved.keys);
+        assertEquals(2, saved.docked);
+        Order restarted = Order.decode(Order.encode(saved));
+        assertEquals(saved.keys, restarted.keys);
+        assertEquals(saved.docked, restarted.docked);
+    }
+
+    @Test
+    public void savedTilesBeatThemeHiddenButExplicitRemovalStillWins() {
+        Order saved = Order.decode("tvhome-order 1\ndock old\ndocked 1\ncom.example/.Main\n");
+        boolean inSavedLayout = Order.packages(Order.ranks(saved, Collections.singletonList("new")))
+                .contains("com.example");
+        assertTrue(LibraryApps.visible(true, true, inSavedLayout, false));
+        assertTrue(!LibraryApps.visible(true, false, inSavedLayout, true));
+    }
+
+    @Test
+    public void firstSavedOrderRecordsDockWithoutCreatingMissingEntries() {
+        Order saved = Order.mergeUnavailable(null, "theme", Arrays.asList("a/.A", "b/.B"), 1);
+        assertEquals(Arrays.asList("a/.A", "b/.B"), saved.keys);
+        assertEquals(1, saved.docked);
     }
 
     @Test

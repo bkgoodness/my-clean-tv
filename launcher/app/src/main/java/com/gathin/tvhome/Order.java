@@ -11,6 +11,8 @@ import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Set;
 import java.util.List;
 import java.util.Map;
 
@@ -18,9 +20,7 @@ import java.util.Map;
  * The owner's own tile order, set with the reorder button and kept in the launcher's private files (order.txt).
  *
  * Saved tiles come first in this order; apps not in it (new installs) follow by the usual rule (dock_apps, cards,
- * alphabetical) and uninstalled ones simply drop out. The file also records the dock_apps it was made under: when
- * dock_apps changes (a rebuild or a pushed theme), the saved order is ignored, so the new dock takes effect until
- * the owner reorders again.
+ * alphabetical) and unavailable ones are retained for their return. Theme dock defaults do not override a saved order.
  *
  * Format, UTF-8 text: {@code tvhome-order 1}, then {@code dock <comma-separated dock_apps>}, then optionally
  * {@code docked <n>}, then one tile key (component, flattened short) per line. {@code docked} says how many of the
@@ -93,19 +93,52 @@ final class Order {
     }
 
     /**
-     * Rank of each saved key (0 = first) when the order still applies to these dock_apps, else an empty map.
+     * Rank of each saved key (0 = first), independent of theme dock defaults.
      * Tiles without a rank sort after every ranked one.
      */
     static Map<String, Integer> ranks(Order order, List<String> dockApps) {
         Map<String, Integer> r = new HashMap<>();
-        if (order == null || !order.dock.equals(dockKey(dockApps))) return r;
+        if (order == null) return r;
         for (int i = 0; i < order.keys.size(); i++) r.put(order.keys.get(i), i);
         return r;
     }
 
-    /** The saved dock size when the order still applies to these dock_apps and recorded one, else -1. */
+    /** The saved dock size if recorded, else -1 for legacy orders. */
     static int docked(Order order, List<String> dockApps) {
-        return order == null || !order.dock.equals(dockKey(dockApps)) ? -1 : order.docked;
+        return order == null ? -1 : order.docked;
+    }
+
+    /** Packages represented by saved component keys, used before theme visibility defaults. */
+    static Set<String> packages(Map<String, Integer> ranks) {
+        Set<String> packages = new HashSet<>();
+        for (String key : ranks.keySet()) {
+            int slash = key.indexOf('/');
+            if (slash > 0 && slash < key.length() - 1) packages.add(key.substring(0, slash));
+        }
+        return packages;
+    }
+
+    /** Preserve temporarily unavailable tiles while saving a new visible arrangement. */
+    static Order mergeUnavailable(Order previous, String dock, List<String> visible, int visibleDocked) {
+        List<String> merged = new ArrayList<>(visible);
+        int dockCount = visibleDocked;
+        if (previous != null) {
+            for (int i = 0; i < previous.keys.size(); i++) {
+                String key = previous.keys.get(i);
+                if (visible.contains(key)) continue;
+                if (previous.docked >= 0 && i < previous.docked) {
+                    merged.add(dockCount++, key);
+                    continue;
+                }
+                int at = merged.size();
+                for (int j = i + 1; j < previous.keys.size(); j++) {
+                    int next = merged.indexOf(previous.keys.get(j));
+                    if (next >= dockCount) { at = next; break; }
+                }
+                merged.add(at, key);
+            }
+        }
+        return new Order(dock, merged, dockCount);
     }
 
     /** Sort step for two tiles: saved ones first in saved order, then 0 to fall through to the usual rule. */

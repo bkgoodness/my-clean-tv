@@ -346,7 +346,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
     /** fill_dock false: how many dock slots held an app when reorder mode started. */
     private int dockedAtStart;
     private View btnReorder;
-    /** dock_apps as loaded (config.xml or a theme): a saved Order only applies while these are unchanged. */
+    /** dock_apps as loaded (config.xml or a theme): used as defaults before the owner saves an order. */
     private List<String> dockApps;
     /** fill_dock false: the dock can have empty slots, which reorder mode leaves out and restores afterwards. */
     private boolean fillDockLeavesSlots;
@@ -1685,7 +1685,9 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         }
         dockInSession = null;
         if (!keys.equals(before) || (fillDockLeavesSlots && docked != dockedAtStart)) {
-            Order order = new Order(Order.dockKey(dockApps), keys, docked);
+            int visibleDocked = fillDockLeavesSlots ? docked : Math.min(COLUMNS, keys.size());
+            Order order = Order.mergeUnavailable(Order.load(Order.file(this)),
+                    Order.dockKey(dockApps), keys, visibleDocked);
             if (Order.save(Order.file(this), order)) {
                 adapter.setSavedOrder(Order.ranks(order, dockApps), Order.docked(order, dockApps));
             } else {

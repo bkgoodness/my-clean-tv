@@ -62,8 +62,15 @@ Choices are stored in the launcher’s private `library_apps.txt` and
 atomically. An unreadable file is left unchanged if an edit fails. Choices
 survive restarts and app updates; missing or disabled packages are omitted until
 they return. Explicit Home removals override theme defaults until re-added.
-Theme config, dock ordering, module-card decisions and other saved tile order
-are not edited. Disabling the library button keeps existing Home choices.
+The saved tile arrangement also keeps its apps on Home when a theme would hide them;
+an explicit Remove from Home wins over both. Saved order and recorded dock placement
+win over theme dock defaults. An app absent during an edit keeps its saved place for
+when it returns; newly discovered apps follow the saved tiles. Old orders without a
+recorded dock count still use dock defaults until the next arrangement edit. A theme
+with fewer columns or a filled dock can change how the saved order fits on screen.
+Theme config and module-card decisions are not edited. Disabling the library button
+keeps existing Home choices. Follow theme resets Launcher settings choices, not the
+saved app arrangement or library choices.
 
 The library uses the existing package receiver to refresh after app changes.
 Labels and Home membership are cached for each refresh; icons load only for

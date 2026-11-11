@@ -268,6 +268,9 @@ public class AppAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
         // Copy before merging: LibraryApps.load() may return an immutable empty set (#419).
         Set<String> added = new HashSet<>(LibraryApps.load(ctx));
         added.addAll(libraryPreload);
+        // A saved arrangement represents the owner's chosen Home tiles. Theme hidden_apps
+        // cannot hide them; an explicit library removal still takes precedence below.
+        added.addAll(Order.packages(savedRanks));
         Set<String> removed = LibraryApps.loadRemoved(ctx);
         if (!added.isEmpty()) {
             Set<String> seen = new HashSet<>(tvPackages);

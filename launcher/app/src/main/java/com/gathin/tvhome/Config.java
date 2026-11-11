@@ -671,8 +671,7 @@ final class Config {
         }
         // A top-bar app is moved there, not copied: it leaves the grid.
         for (String pkg : topBarApps) if (!hidden.contains(pkg)) hidden.add(pkg);
-        // A theme push or reset invalidates choices made on the TV. On first use, remember the
-        // current theme without clearing choices from an older launcher version.
+        // Explicit on-TV choices take precedence over theme and built-in defaults.
         SharedPreferences choices = ctx.getSharedPreferences(SETTINGS_NAME, Context.MODE_PRIVATE);
         // Unmounted storage looks like a theme reset; compare only once the file is readable.
         if (mounted) syncThemeChoices(choices, dir, file);
@@ -769,20 +768,9 @@ final class Config {
         File revision = dir == null ? null : new File(dir, THEME_REVISION_NAME);
         String token = revisionToken(revision);
         String signature = fileStamp(config) + ":" + token;
-        String seen = choices.getString(THEME_SIGNATURE_KEY, null);
-        if (seen == null) {
-            // Existing preferences survive an app upgrade, unless the first launch follows an
-            // explicit theme push or reset by the updated tools.
-            SharedPreferences.Editor editor = choices.edit();
-            if (!"absent".equals(token)) editor.remove("columns").remove("animations")
-                    .remove("advanced_effects").remove(ROWS_BELOW_DOCK_KEY).remove(WALLPAPER_CHOICE_KEY)
-                    .remove(DOCK_OPACITY_KEY).remove(CLOCK_FORMAT_KEY);
-            editor.putString(THEME_SIGNATURE_KEY, signature).commit();
-        } else if (!seen.equals(signature)) {
-            choices.edit().remove("columns").remove("animations").remove("advanced_effects")
-                    .remove(ROWS_BELOW_DOCK_KEY).remove(WALLPAPER_CHOICE_KEY).remove(DOCK_OPACITY_KEY)
-                    .remove(CLOCK_FORMAT_KEY).putString(THEME_SIGNATURE_KEY, signature).commit();
-        }
+        // Track the current theme without clearing the owner's settings. Follow theme is the explicit reset.
+        if (!signature.equals(choices.getString(THEME_SIGNATURE_KEY, null)))
+            choices.edit().putString(THEME_SIGNATURE_KEY, signature).commit();
     }
 
     /** The dock band opacity chosen in Launcher settings, or the theme's when none (or an out-of-range one) is saved. */
