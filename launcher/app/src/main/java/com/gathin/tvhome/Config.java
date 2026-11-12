@@ -711,6 +711,35 @@ final class Config {
             wallpaper = chosen.isEmpty() ? null : chosen.get(0);
             wallpaperEnabled = !chosen.isEmpty();
         }
+        // A saved slideshow switch overrides theme defaults only after the user changes it.
+        if (choices.contains(WallpaperSlideshow.ENABLED)) {
+            boolean slideshow = choices.getBoolean(WallpaperSlideshow.ENABLED, false);
+            if (slideshow) {
+                wallpaperMoods = Collections.emptyMap();
+                List<WallpaperLibrary.Item> wallpaperItems = WallpaperLibrary.entries(dir,
+                        new File(ctx.getFilesDir(), WallpaperLibrary.USER_DIR));
+                List<File> included = WallpaperSlideshow.included(wallpaperItems,
+                        choices.getStringSet(WallpaperSlideshow.EXCLUDED, Collections.emptySet()));
+                if (!included.isEmpty()) {
+                    wallpapers.clear();
+                    wallpapers.addAll(included);
+                    wallpaper = included.get(0);
+                    wallpaperEnabled = true;
+                    rotationMinutes = WallpaperSlideshow.interval(choices.getInt(WallpaperSlideshow.INTERVAL, 30));
+                } else {
+                    // Exclusion only affects the slideshow: keep the last displayed image as a still.
+                    String shown = ctx.getSharedPreferences("wallpaper_rotation", Context.MODE_PRIVATE)
+                            .getString("image", "");
+                    File current = WallpaperSlideshow.current(wallpaperItems, shown);
+                    if (current != null) {
+                        wallpapers.clear(); wallpapers.add(current); wallpaper = current; wallpaperEnabled = true;
+                    }
+                    rotationMinutes = 0;
+                }
+            } else rotationMinutes = 0;
+            String chosenOrder = choices.getString(WallpaperSlideshow.ORDER, wallpaperOrder);
+            if (WallpaperRotation.validOrder(chosenOrder)) wallpaperOrder = chosenOrder;
+        }
         // A festive skin comes only from a theme; config.xml has no festival. seasonal_skin names one the same way
         // but launchers before it ignore the key, so a theme can carry it without older ones showing the diya skin.
         Festival festival = json == null ? Festival.NONE : Festival.parse(festivalName(json),

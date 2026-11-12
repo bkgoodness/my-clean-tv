@@ -22,6 +22,10 @@ import androidx.recyclerview.widget.GridLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 import java.io.File;
 import java.util.List;
+import java.util.Set;
+import java.util.HashSet;
+import java.util.Collections;
+import java.util.Random;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
@@ -31,7 +35,7 @@ public final class WallpaperLibraryActivity extends Activity {
     private File userDir;
     private List<WallpaperLibrary.Item> items;
     private RecyclerView grid;
-    private TextView empty;
+    private TextView empty, rotationButton, intervalButton, orderButton;
     private final ExecutorService thumbnails = Executors.newSingleThreadExecutor();
     private boolean closed;
 
@@ -62,6 +66,16 @@ public final class WallpaperLibraryActivity extends Activity {
         add.setOnClickListener(v -> startActivity(new Intent(this, WallpaperUploadActivity.class)));
         theme.setOnClickListener(v -> select(null));
         none.setOnClickListener(v -> select(WallpaperRotation.CHOICE_NONE));
+        LinearLayout slideshow = new LinearLayout(this);
+        slideshow.setOrientation(LinearLayout.HORIZONTAL);
+        rotationButton = button(""); intervalButton = button(""); orderButton = button("");
+        TextView next = button(getString(R.string.wallpaper_slideshow_next));
+        slideshow.addView(rotationButton); slideshow.addView(intervalButton); slideshow.addView(orderButton); slideshow.addView(next);
+        root.addView(slideshow);
+        rotationButton.setOnClickListener(v -> toggleRotation());
+        intervalButton.setOnClickListener(v -> chooseInterval());
+        orderButton.setOnClickListener(v -> changeOrder());
+        next.setOnClickListener(v -> nextWallpaper());
         empty = new TextView(this); empty.setText(R.string.wallpaper_library_empty); empty.setTextColor(Color.WHITE);
         root.addView(empty);
         grid = new RecyclerView(this);
@@ -88,10 +102,96 @@ public final class WallpaperLibraryActivity extends Activity {
         items = WallpaperLibrary.entries(Config.dir(this), userDir);
         empty.setVisibility(items.isEmpty() ? View.VISIBLE : View.GONE);
         grid.setAdapter(new GridAdapter());
+        refreshControls();
+    }
+    private Set<String> excluded() {
+        return new HashSet<>(choices.getStringSet(WallpaperSlideshow.EXCLUDED, Collections.emptySet()));
+    }
+    private boolean rotating(Config cfg) {
+        Boolean explicit = choices.contains(WallpaperSlideshow.ENABLED)
+                ? choices.getBoolean(WallpaperSlideshow.ENABLED, false) : null;
+        return WallpaperSlideshow.rotating(explicit, cfg.wallpaperRotationMinutes, cfg.wallpapers.size());
+    }
+    private void save(SharedPreferences.Editor edit) {
+        edit.putLong(Config.SETTINGS_REVISION_KEY, choices.getLong(Config.SETTINGS_REVISION_KEY, 0) + 1).apply();
+    }
+    private void refreshControls() {
+        Config cfg = Config.load(this);
+        boolean on = rotating(cfg);
+        rotationButton.setText(getString(on ? R.string.wallpaper_slideshow_on : R.string.wallpaper_slideshow_off));
+        int mins = choices.contains(WallpaperSlideshow.ENABLED) && choices.contains(WallpaperSlideshow.INTERVAL)
+                ? WallpaperSlideshow.interval(choices.getInt(WallpaperSlideshow.INTERVAL, 30))
+                : (on && cfg.wallpaperRotationMinutes > 0 ? cfg.wallpaperRotationMinutes : 30);
+        intervalButton.setText(mins == 1440 ? getString(R.string.wallpaper_slideshow_day)
+                : getString(R.string.wallpaper_slideshow_interval, mins));
+        String order = choices.contains(WallpaperSlideshow.ENABLED)
+                ? choices.getString(WallpaperSlideshow.ORDER, cfg.wallpaperOrder) : cfg.wallpaperOrder;
+        orderButton.setText(getString(WallpaperRotation.ORDER_SEQUENTIAL.equals(order)
+                ? R.string.wallpaper_slideshow_sequential : R.string.wallpaper_slideshow_shuffle));
+    }
+    private void toggleRotation() {
+        boolean enable = !rotating(Config.load(this));
+        SharedPreferences.Editor edit = choices.edit().putBoolean(WallpaperSlideshow.ENABLED, enable);
+        if (!enable) {
+            String shown = getSharedPreferences("wallpaper_rotation", MODE_PRIVATE).getString("image", "");
+            File current = WallpaperRotation.find(WallpaperSlideshow.included(items, Collections.emptySet()), shown);
+            String id = WallpaperSlideshow.idFor(items, current);
+            if (id != null) edit.putString(Config.WALLPAPER_CHOICE_KEY, id);
+        }
+        save(edit); reload();
+    }
+    private void chooseInterval() {
+        String[] labels = {getString(R.string.wallpaper_slideshow_minutes, 5), getString(R.string.wallpaper_slideshow_minutes, 15),
+                getString(R.string.wallpaper_slideshow_minutes, 30), getString(R.string.wallpaper_slideshow_minutes, 60),
+                getString(R.string.wallpaper_slideshow_day)};
+        new AlertDialog.Builder(this).setTitle(R.string.wallpaper_slideshow_interval_title)
+                .setItems(labels, (dialog, which) -> {
+                    save(choices.edit().putInt(WallpaperSlideshow.INTERVAL, WallpaperSlideshow.INTERVALS[which])
+                            .putBoolean(WallpaperSlideshow.ENABLED, rotating(Config.load(this))));
+                    reload();
+                }).setNegativeButton(android.R.string.cancel, null).show();
+    }
+    private void changeOrder() {
+        Config cfg = Config.load(this);
+        String current = choices.getString(WallpaperSlideshow.ORDER, cfg.wallpaperOrder);
+        String next = WallpaperRotation.ORDER_SEQUENTIAL.equals(current) ? WallpaperRotation.ORDER_SHUFFLE : WallpaperRotation.ORDER_SEQUENTIAL;
+        save(choices.edit().putString(WallpaperSlideshow.ORDER, next)
+                .putBoolean(WallpaperSlideshow.ENABLED, rotating(cfg))); reload();
+    }
+    private void nextWallpaper() {
+        Config cfg = Config.load(this);
+        boolean on = rotating(cfg);
+        List<File> candidates = WallpaperSlideshow.nextCandidates(on, choices.contains(WallpaperSlideshow.ENABLED),
+                cfg.wallpapers, items, excluded());
+        String previous = getSharedPreferences("wallpaper_rotation", MODE_PRIVATE).getString("image", "");
+        File next = WallpaperSlideshow.next(candidates, previous, cfg.wallpaperOrder, new Random());
+        if (next == null) { Toast.makeText(this, R.string.wallpaper_slideshow_no_images, Toast.LENGTH_SHORT).show(); return; }
+        String id = WallpaperSlideshow.idFor(items, next);
+        if (id == null) return;
+        SharedPreferences playback = getSharedPreferences("wallpaper_rotation", MODE_PRIVATE);
+        playback.edit().putString("collection", WallpaperPlayer.collectionKey(on ? candidates : Collections.singletonList(next)))
+                .putString("image", next.getPath()).putLong("changed", System.currentTimeMillis()).apply();
+        SharedPreferences.Editor edit = choices.edit();
+        if (!on) edit.putString(Config.WALLPAPER_CHOICE_KEY, id).putBoolean(WallpaperSlideshow.ENABLED, false);
+        save(edit); reload();
+        Toast.makeText(this, R.string.wallpaper_slideshow_next_ready, Toast.LENGTH_SHORT).show();
+    }
+    private void itemMenu(WallpaperLibrary.Item item) {
+        boolean included = !excluded().contains(item.id);
+        String toggle = getString(included ? R.string.wallpaper_slideshow_exclude : R.string.wallpaper_slideshow_include);
+        String[] options = item.user ? new String[]{toggle, getString(R.string.wallpaper_delete_action)} : new String[]{toggle};
+        new AlertDialog.Builder(this).setTitle(label(item)).setItems(options, (dialog, which) -> {
+            if (which == 1) { remove(item); return; }
+            Set<String> set = excluded(); if (included) set.add(item.id); else set.remove(item.id);
+            Config cfg = Config.load(this);
+            save(choices.edit().putStringSet(WallpaperSlideshow.EXCLUDED, set)
+                    .putBoolean(WallpaperSlideshow.ENABLED, rotating(cfg))); reload();
+        }).setNegativeButton(android.R.string.cancel, null).show();
     }
     private void select(String value) {
         SharedPreferences.Editor edit = choices.edit();
-        if (value == null) edit.remove(Config.WALLPAPER_CHOICE_KEY); else edit.putString(Config.WALLPAPER_CHOICE_KEY, value);
+        if (value == null) { edit.remove(Config.WALLPAPER_CHOICE_KEY); edit.remove(WallpaperSlideshow.ENABLED); }
+        else { edit.putString(Config.WALLPAPER_CHOICE_KEY, value); edit.putBoolean(WallpaperSlideshow.ENABLED, false); }
         edit.putLong(Config.SETTINGS_REVISION_KEY, choices.getLong(Config.SETTINGS_REVISION_KEY, 0) + 1).apply();
         setResult(RESULT_OK); finish();
     }
@@ -103,11 +203,9 @@ public final class WallpaperLibraryActivity extends Activity {
                     if (!WallpaperLibrary.deleteUser(userDir, item)) {
                         Toast.makeText(this, R.string.wallpaper_delete_failed, Toast.LENGTH_SHORT).show(); return;
                     }
-                    if (item.id.equals(choices.getString(Config.WALLPAPER_CHOICE_KEY, null))) {
-                        choices.edit().remove(Config.WALLPAPER_CHOICE_KEY)
-                                .putLong(Config.SETTINGS_REVISION_KEY, choices.getLong(Config.SETTINGS_REVISION_KEY, 0) + 1).apply();
-                    }
-                    reload();
+                    SharedPreferences.Editor edit = choices.edit();
+                    if (item.id.equals(choices.getString(Config.WALLPAPER_CHOICE_KEY, null))) edit.remove(Config.WALLPAPER_CHOICE_KEY);
+                    save(edit); reload();
                 }).show();
     }
 
@@ -153,6 +251,7 @@ public final class WallpaperLibraryActivity extends Activity {
         @Override public void onBindViewHolder(@NonNull Holder holder, int position) {
             WallpaperLibrary.Item item = items.get(position);
             String value = label(item);
+            if (excluded().contains(item.id)) value = getString(R.string.wallpaper_slideshow_excluded_item, value);
             if (selectedFile != null && selectedFile.contains(item.file)) value = getString(R.string.wallpaper_selected_item, value);
             holder.label.setText(value); holder.card.setContentDescription(value);
             holder.image.setImageDrawable(null); holder.image.setContentDescription(getString(R.string.wallpaper_preview_unavailable));
@@ -162,7 +261,7 @@ public final class WallpaperLibraryActivity extends Activity {
                 if (Boolean.TRUE.equals(v.getTag())) select(item.id);
                 else Toast.makeText(WallpaperLibraryActivity.this, R.string.wallpaper_unreadable, Toast.LENGTH_SHORT).show();
             });
-            holder.card.setOnLongClickListener(item.user ? v -> { remove(item); return true; } : null);
+            holder.card.setOnLongClickListener(v -> { itemMenu(item); return true; });
             loadThumbnail(holder, item);
         }
         @Override public int getItemCount() { return items.size(); }
@@ -198,6 +297,16 @@ public final class WallpaperLibraryActivity extends Activity {
             });
         });
     }
-    @Override protected void onResume() { super.onResume(); if (grid != null) reload(); }
+    @Override protected void onResume() {
+        super.onResume();
+        if (grid != null) {
+            Set<String> before = new HashSet<>();
+            if (items != null) for (WallpaperLibrary.Item item : items) before.add(item.id);
+            reload();
+            Set<String> after = new HashSet<>();
+            for (WallpaperLibrary.Item item : items) after.add(item.id);
+            if (!before.equals(after)) save(choices.edit());
+        }
+    }
     @Override protected void onDestroy() { closed = true; thumbnails.shutdownNow(); super.onDestroy(); }
 }

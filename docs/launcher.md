@@ -67,7 +67,11 @@ The launcher's own page has these rows, top to bottom:
   pairing code. Select one or more images in the browser. The listener stops when the screen closes, the
   network is lost, or ten minutes pass. Transfers use unencrypted HTTP: use only a trusted home network;
   someone observing that network can see the code and images. Guest or isolated Wi-Fi may block access.
-  Duplicates are skipped. Keep original photos separately: app-owned copies
+  Duplicates are skipped. The library's slideshow controls turn rotation on or off, set 5, 15, 30 or
+  60 minutes or 24 hours, choose shuffle or sequential order, and advance to the next wallpaper. Hold OK
+  on an image to include or exclude it; theme images remain read-only. Selecting a single image pauses
+  rotation. The explicit slideshow preferences survive theme changes and updates; Follow theme is an
+  explicit reset. Keep original photos separately: app-owned copies
   survive ordinary updates but Android removes them if the app is uninstalled.
 - **Animations** on or off, and **Advanced effects** (tile lift, icon zoom and smooth ambient-colour
   transitions; they may use more memory) once animations are on.

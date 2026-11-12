@@ -36,8 +36,12 @@ final class WallpaperRotation {
     }
 
     static File find(List<File> images, String name) {
-        for (File image : images) if (image.getName().equals(name)) return image;
+        for (File image : images) if (matches(image, name)) return image;
         return null;
+    }
+
+    static boolean matches(File image, String identity) {
+        return image.getPath().equals(identity) || image.getName().equals(identity);
     }
 
     /** The on-TV choice (Launcher settings, Wallpaper) that turns the wallpaper off. */
@@ -58,7 +62,10 @@ final class WallpaperRotation {
 
     static File pick(List<File> images, String previous, Random random) {
         List<File> candidates = new ArrayList<>(images);
-        if (candidates.size() > 1) candidates.removeIf(image -> image.getName().equals(previous));
+        if (candidates.size() > 1) {
+            File prior = find(candidates, previous);
+            if (prior != null) candidates.remove(prior);
+        }
         return candidates.isEmpty() ? null : candidates.get(random.nextInt(candidates.size()));
     }
 
@@ -70,7 +77,7 @@ final class WallpaperRotation {
     static File next(List<File> images, String previous) {
         if (images.isEmpty()) return null;
         for (int i = 0; i < images.size(); i++) {
-            if (images.get(i).getName().equals(previous)) {
+            if (matches(images.get(i), previous)) {
                 return images.get((i + 1) % images.size());
             }
         }

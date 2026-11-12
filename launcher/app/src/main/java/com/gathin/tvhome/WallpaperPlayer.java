@@ -114,7 +114,7 @@ final class WallpaperPlayer {
                 show(bitmap);
                 // The picture covers the whole screen: the root's plain colour under it is overdraw.
                 root.setBackground(null);
-                displayed = first.getName();
+                displayed = first.getPath();
                 showCaption(false);
                 if (!displayed.equals(previous)) {
                     preferences.edit().putString("image", displayed)
@@ -175,7 +175,7 @@ final class WallpaperPlayer {
         if (selected == null || WallpaperRotation.due(changed, System.currentTimeMillis(), interval)) {
             selected = WallpaperRotation.pick(playable, previous, order, random);
         }
-        if (selected == null || selected.getName().equals(displayed)) return;
+        if (selected == null || selected.getPath().equals(displayed)) return;
         File next = selected;
         loading = true;
         decoder.execute(() -> {
@@ -193,7 +193,7 @@ final class WallpaperPlayer {
                     return;
                 }
                 show(bitmap);
-                displayed = next.getName();
+                displayed = next.getPath();
                 showCaption(true);
                 if (!displayed.equals(previous) || changed == 0) {
                     preferences.edit().putString("image", displayed)
@@ -234,7 +234,7 @@ final class WallpaperPlayer {
     /** The displayed picture's name, faded across a change; a picture without a name hides the caption. */
     private void showCaption(boolean fade) {
         if (caption == null) return;
-        String name = names.get(displayed);
+        String name = names.get(new File(displayed).getName());
         caption.animate().cancel();
         if (name == null) {
             caption.setAlpha(0f);
@@ -253,7 +253,7 @@ final class WallpaperPlayer {
     }
 
     /** Names plus sizes: enough to notice a different collection without hashing every image. */
-    private static String collectionKey(List<File> images) {
+    static String collectionKey(List<File> images) {
         StringBuilder key = new StringBuilder();
         for (File file : images) key.append(file.getName()).append(':').append(file.length()).append(';');
         return key.toString();

@@ -211,8 +211,8 @@ final class ClockScene {
         shownMs = 0;
         // The same pick as Home's, so a shuffled collection stays shuffled and wallpaper_moods still
         // decides what may show at this hour.
-        File next = WallpaperRotation.pick(playable(), wallpaperFile.getName(), order, random);
-        if (next.equals(wallpaperFile)) return;   // a mood group of one
+        File next = WallpaperRotation.pick(playable(), wallpaperFile.getPath(), order, random);
+        if (next == null || next.equals(wallpaperFile)) return;   // a mood group of one
         wallpaperFile = next;
         wallpaperShown = false;
         loadWallpaper();

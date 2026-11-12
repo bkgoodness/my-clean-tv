@@ -110,7 +110,7 @@
     <string name="reorder_not_saved">Couldn\'t save the new order</string>
     <string name="continue_card_text" translatable="false">%1$s\n%2$s%3$s</string>
     <string name="wallpaper_library_title">Wallpaper library</string>
-    <string name="wallpaper_library_help">Select a wallpaper. Hold OK on a My wallpaper to remove it.</string>
+    <string name="wallpaper_library_help">Select a wallpaper. Hold OK for slideshow options or to remove a My wallpaper.</string>
     <string name="wallpaper_library_empty">No wallpapers are available yet.</string>
     <string name="wallpaper_theme_item">Theme · %1$s</string>
     <string name="wallpaper_user_item">My wallpaper · %1$s</string>
@@ -184,4 +184,18 @@
     <string name="wallpaper_upload_duplicate">Image is already in My Wallpapers.</string>
     <string name="wallpaper_upload_failed">Transfer failed. Check the image and available space.</string>
     <string name="wallpaper_upload_stopped">Local transfer stopped. Close and reopen this screen to start again.</string>
+    <string name="wallpaper_slideshow_on">Rotation: On</string>
+    <string name="wallpaper_slideshow_off">Rotation: Off</string>
+    <string name="wallpaper_slideshow_interval">Every %1$d min</string>
+    <string name="wallpaper_slideshow_interval_title">Rotation interval</string>
+    <string name="wallpaper_slideshow_minutes">%1$d minutes</string>
+    <string name="wallpaper_slideshow_day">24 hours</string>
+    <string name="wallpaper_slideshow_shuffle">Shuffle</string>
+    <string name="wallpaper_slideshow_sequential">Sequential</string>
+    <string name="wallpaper_slideshow_next">Next wallpaper</string>
+    <string name="wallpaper_slideshow_no_images">No slideshow images are available.</string>
+    <string name="wallpaper_slideshow_next_ready">Wallpaper will change on Home.</string>
+    <string name="wallpaper_slideshow_exclude">Exclude from slideshow</string>
+    <string name="wallpaper_slideshow_include">Include in slideshow</string>
+    <string name="wallpaper_slideshow_excluded_item">%1$s · excluded</string>
 </resources>

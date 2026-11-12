@@ -153,7 +153,7 @@
     <string name="clock_format_12">12 שעות</string>
     <string name="clock_format_24">24 שעות</string>
     <string name="wallpaper_library_title">ספריית תמונות רקע</string>
-    <string name="wallpaper_library_help">בחרו תמונת רקע. להסרת תמונה אישית, לחצו לחיצה ארוכה על אישור.</string>
+    <string name="wallpaper_library_help">בחרו טפט. לחצו לחיצה ארוכה על אישור לאפשרויות המצגת או להסרת תמונה אישית.</string>
     <string name="wallpaper_library_empty">אין כרגע תמונות רקע זמינות.</string>
     <string name="wallpaper_theme_item">ערכת נושא · %1$s</string>
     <string name="wallpaper_user_item">תמונת רקע אישית · %1$s</string>
@@ -177,4 +177,18 @@
     <string name="wallpaper_upload_duplicate">התמונה כבר נמצאת בטפטים שלי.</string>
     <string name="wallpaper_upload_failed">ההעברה נכשלה. יש לבדוק את התמונה ואת השטח הפנוי.</string>
     <string name="wallpaper_upload_stopped">ההעברה המקומית הופסקה. יש לסגור ולפתוח מחדש כדי להתחיל שוב.</string>
+    <string name="wallpaper_slideshow_on">סבב: פועל</string>
+    <string name="wallpaper_slideshow_off">סבב: כבוי</string>
+    <string name="wallpaper_slideshow_interval">כל %1$d דקות</string>
+    <string name="wallpaper_slideshow_interval_title">מרווח בין תמונות</string>
+    <string name="wallpaper_slideshow_minutes">%1$d דקות</string>
+    <string name="wallpaper_slideshow_day">24 שעות</string>
+    <string name="wallpaper_slideshow_shuffle">אקראי</string>
+    <string name="wallpaper_slideshow_sequential">לפי הסדר</string>
+    <string name="wallpaper_slideshow_next">הטפט הבא</string>
+    <string name="wallpaper_slideshow_no_images">אין תמונות זמינות למצגת.</string>
+    <string name="wallpaper_slideshow_next_ready">הטפט ישתנה במסך הבית.</string>
+    <string name="wallpaper_slideshow_exclude">הסרה מהמצגת</string>
+    <string name="wallpaper_slideshow_include">הוספה למצגת</string>
+    <string name="wallpaper_slideshow_excluded_item">%1$s · לא במצגת</string>
 </resources>
