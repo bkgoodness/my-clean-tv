@@ -158,7 +158,8 @@ final class ContinueWatching {
     void close() { closed = true; focusRequest++; generation++; main.removeCallbacks(reportArtwork);
         online.close(); loader.shutdownNow(); artwork.shutdownNow(); artCache.evictAll(); }
 
-    void refresh() {
+    void refresh() { refresh(false); }
+    private void refresh(boolean diagnostic) {
         if (closed) return;
         int request = ++generation;
         if (activity.checkSelfPermission(PERMISSION) != PackageManager.PERMISSION_GRANTED) {
@@ -166,6 +167,11 @@ final class ContinueWatching {
             draw("Select Continue Watching to allow TV listings access.", Collections.emptyList());
             return;
         }
+        final WatchNextDiagnostics report = diagnostic ? new WatchNextDiagnostics() : null;
+        final Set<String> diagnosticExcluded = diagnostic ? new HashSet<>(prefs.getStringSet("excluded", Collections.emptySet())) : Collections.emptySet();
+        final Set<String> diagnosticHidden = diagnostic ? hiddenKeys() : Collections.emptySet();
+        final int diagnosticDays = diagnostic ? prefs.getInt("days", 30) : 0;
+        final long diagnosticNow = System.currentTimeMillis();
         loader.execute(() -> {
             List<Item> items = new ArrayList<>();
             java.util.Map<String, String> labels = new java.util.HashMap<>();
@@ -186,7 +192,13 @@ final class ContinueWatching {
                     i.seasonNumber = seasonIndex < 0 ? null : c.getString(seasonIndex);
                     i.episodeNumber = episodeIndex < 0 ? null : c.getString(episodeIndex);
                     i.mediaType = typeIndex < 0 || c.isNull(typeIndex) ? -1 : c.getInt(typeIndex);
-                    if (i.pkg != null && i.title != null && !i.title.trim().isEmpty()) {
+                    boolean missing = i.pkg == null || i.title == null || i.title.trim().isEmpty();
+                    if (report != null) report.add(WatchNextDiagnostics.source(i.pkg), missing,
+                            diagnosticExcluded.contains(i.pkg), !fresh(i.engaged, diagnosticNow, diagnosticDays),
+                            diagnosticHidden.contains(i.key()) || diagnosticHidden.contains(i.alias()),
+                            WatchNextDiagnostics.artwork(i.poster), WatchNextDiagnostics.artwork(i.thumbnail),
+                            i.intent != null && !i.intent.trim().isEmpty());
+                    if (!missing) {
                         i.appLabel = labels.get(i.pkg);
                         if (i.appLabel == null) {
                             try { i.appLabel = activity.getPackageManager().getApplicationLabel(
@@ -204,6 +216,14 @@ final class ContinueWatching {
                 if (closed || request != generation || activity.isFinishing()) return;
                 all = items;
                 showFiltered(message);
+                if (report != null) {
+                    if (message == null) {
+                        String summary = report.summary();
+                        Log.i("TvHome.SourceDiag", summary);
+                        new AlertDialog.Builder(activity).setTitle("Watch Next source diagnostics")
+                                .setMessage(summary).setPositiveButton(android.R.string.ok, null).show();
+                    } else Toast.makeText(activity, message, Toast.LENGTH_LONG).show();
+                }
             });
         });
     }
@@ -532,13 +552,15 @@ final class ContinueWatching {
     private void settings() {
         new AlertDialog.Builder(activity).setTitle("Continue Watching")
                 .setItems(new String[]{"Allow or refresh TV listings", "Streaming apps", "Freshness", "Sort order", "Restore hidden titles",
-                        activity.getString(onlineEnabled ? R.string.online_artwork_on : R.string.online_artwork_off)}, (d, which) -> {
+                        activity.getString(onlineEnabled ? R.string.online_artwork_on : R.string.online_artwork_off),
+                        "Run source diagnostics"}, (d, which) -> {
                     if (which == 0) {
                         if (activity.checkSelfPermission(PERMISSION) != PackageManager.PERMISSION_GRANTED)
                             activity.requestPermissions(new String[]{PERMISSION}, 82);
                         else refresh();
                     } else if (which == 1) apps(); else if (which == 2) days();
-                    else if (which == 3) sort(); else if (which == 4) restore(); else onlineSetting();
+                    else if (which == 3) sort(); else if (which == 4) restore();
+                    else if (which == 5) onlineSetting(); else refresh(true);
                 }).setNegativeButton(android.R.string.cancel, null).show();
     }
     private void onlineSetting() {
