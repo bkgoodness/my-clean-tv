@@ -152,4 +152,17 @@
     <string name="clock_format_system">מערכת</string>
     <string name="clock_format_12">12 שעות</string>
     <string name="clock_format_24">24 שעות</string>
+    <string name="wallpaper_library_title">ספריית תמונות רקע</string>
+    <string name="wallpaper_library_help">בחרו תמונת רקע. להסרת תמונה אישית, לחצו לחיצה ארוכה על אישור.</string>
+    <string name="wallpaper_library_empty">אין כרגע תמונות רקע זמינות.</string>
+    <string name="wallpaper_theme_item">ערכת נושא · %1$s</string>
+    <string name="wallpaper_user_item">תמונת רקע אישית · %1$s</string>
+    <string name="wallpaper_user_choice">תמונת רקע אישית</string>
+    <string name="wallpaper_selected_item">%1$s · נבחרה</string>
+    <string name="wallpaper_preview_unavailable">התצוגה המקדימה אינה זמינה</string>
+    <string name="wallpaper_unreadable">לא ניתן לפתוח את תמונת הרקע.</string>
+    <string name="wallpaper_delete_title">להסיר את תמונת הרקע?</string>
+    <string name="wallpaper_delete_message">פעולה זו מסירה רק את העותק של My Clean TV.</string>
+    <string name="wallpaper_delete_action">הסרה</string>
+    <string name="wallpaper_delete_failed">לא ניתן להסיר את תמונת הרקע.</string>
 </resources>

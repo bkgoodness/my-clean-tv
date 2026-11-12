@@ -56,9 +56,16 @@ The launcher's own page has these rows, top to bottom:
   its own row (`dock_row`, on by default).
 - **Clock**: **System** follows the TV's 12- or 24-hour setting; **12-hour** or **24-hour** sets the launcher's
   clocks (Home and the clock screensaver) to that, whatever the TV uses (`clock_format` in a theme).
-- **Wallpaper**: one picture from the theme's collection (or its `wallpaper.jpg`), **None**, or **Theme
-  default**. A pick holds that picture and stops the rotation until you choose Theme default, press
-  Follow theme.
+- **Wallpaper** opens a remote-operated library with previews. Theme images are read-only; **My wallpaper**
+  entries are separate app-owned copies. Select an image, **None**, or **Theme default**. A pick holds
+  that picture and stops rotation until you choose Theme default or press Follow theme. Hold OK on a
+  My wallpaper entry to remove only the app's copy, after confirmation. Removing the active copy returns
+  to the theme default. Existing filename-based theme selections continue to work.
+
+  The user collection supports JPEG, PNG and WebP, at most 100 images, 10 MiB each and 250 MiB total.
+  Import validation and duplicate detection are in place for future sources; this version does not yet
+  include an on-TV import flow or network uploader. Keep original photos separately: app-owned copies
+  survive ordinary updates but Android removes them if the app is uninstalled.
 - **Animations** on or off, and **Advanced effects** (tile lift, icon zoom and smooth ambient-colour
   transitions; they may use more memory) once animations are on.
 - **Open on start**, only with `open_on_start_choice`: Off, or an app that opens instead of Home the first

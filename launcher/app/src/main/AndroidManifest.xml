@@ -107,6 +107,8 @@
             </intent-filter>
         </activity>
 
+        <activity android:name=".WallpaperLibraryActivity" android:exported="false"
+            android:screenOrientation="landscape" />
         <activity
             android:name=".LauncherSettingsActivity"
             android:exported="false"
