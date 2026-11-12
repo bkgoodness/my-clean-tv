@@ -173,6 +173,9 @@ public class AppAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
 
     private final Context ctx;
     private final int rowsBelowDock;
+    /** Keep tile sizing stable while the Watch Next shelf is temporarily out of view. */
+    private int sizingHeightOverride;
+    void setSizingHeightOverride(int height) { sizingHeightOverride = Math.max(0, height); }
     private final boolean dockTitle;
     /** The owner's saved order (reorder button, Order): key -> rank. Empty when there is none or it no longer applies. */
     private Map<String, Integer> savedRanks = Collections.emptyMap();
@@ -418,7 +421,8 @@ public class AppAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
         float density = parent.getResources().getDisplayMetrics().density;
         int width = parent.getWidth() > 0 ? parent.getWidth() : parent.getMeasuredWidth();
         int inner = width - parent.getPaddingLeft() - parent.getPaddingRight();
-        int w = tileWidthPx(inner, parent.getHeight(), dockSize, rowsBelowDock, dockTitle, dockRow, density), h = tileHeightPx(w);
+        int sizingHeight = sizingHeightOverride > 0 ? sizingHeightOverride : parent.getHeight();
+        int w = tileWidthPx(inner, sizingHeight, dockSize, rowsBelowDock, dockTitle, dockRow, density), h = tileHeightPx(w);
         View card = v.findViewById(R.id.card);
         ViewGroup.LayoutParams cardLp = card.getLayoutParams();
         cardLp.width = w;

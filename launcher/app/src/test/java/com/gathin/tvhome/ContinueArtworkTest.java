@@ -18,7 +18,9 @@ public class ContinueArtworkTest {
     }
     @Test public void rejectsWebFileEmptyAndMalformedSources() {
         assertTrue(ContinueArtwork.candidates("https://example.com/poster", "file:///secret").isEmpty());
-        assertTrue(ContinueArtwork.candidates("", "content://invalid uri").isEmpty());
+        assertTrue(ContinueArtwork.candidates("", "invalid uri").isEmpty());
+        assertEquals(Collections.singletonList("content://tv/an image"),
+                ContinueArtwork.candidates("content://tv/an image", null));
         assertEquals(Collections.singletonList("content://tv/thumb"),
                 ContinueArtwork.candidates("http://example.com/poster", "content://tv/thumb"));
     }
@@ -31,6 +33,23 @@ public class ContinueArtworkTest {
         assertEquals("thumbnail", ContinueArtwork.firstAvailable(addresses,
                 address -> address.endsWith("poster") ? null : "thumbnail"));
         assertNull(ContinueArtwork.firstAvailable(addresses, address -> null));
+    }
+    @Test public void preAttachedBindingsRemainValidButStaleAndRecycledBindingsAreRejected() {
+        Object token = new Object();
+        assertTrue(ContinueArtwork.bindingCurrent(false, 7, 7, token, token));
+        assertFalse(ContinueArtwork.bindingCurrent(true, 7, 7, token, token));
+        assertFalse(ContinueArtwork.bindingCurrent(false, 8, 7, token, token));
+        assertFalse(ContinueArtwork.bindingCurrent(false, 7, 7, new Object(), token));
+    }
+    @Test public void diagnosticsContainCountsOnly() {
+        ArtworkDiagnostics stats = new ArtworkDiagnostics();
+        stats.sources("https://private.example/secret", "content://provider/private-title");
+        stats.sources(null, ""); stats.decoded(); stats.bound(true); stats.renderReady(); stats.denied();
+        String summary = stats.summary();
+        assertTrue(summary.contains("missing=1")); assertTrue(summary.contains("web_skipped=1"));
+        assertTrue(summary.contains("local=1")); assertTrue(summary.contains("bound_detached=1"));
+        assertTrue(summary.contains("render_ready=1"));
+        assertFalse(summary.contains("private")); assertFalse(summary.contains("provider"));
     }
     @Test public void validPosterWinsAndProgressHandlesMissingAndOverflow() {
         List<String> addresses = ContinueArtwork.candidates("content://tv/poster", "content://tv/thumb");

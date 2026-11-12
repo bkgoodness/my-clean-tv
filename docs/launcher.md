@@ -93,7 +93,9 @@ Continue Watching reads entries published by apps to Android TV's Watch Next pro
 heading and choose **Allow or refresh TV listings** to grant Android's TV listings permission on the TV.
 The heading also opens app inclusion, freshness (30 days by default), sorting, and hidden-title controls.
 Hold OK on a title to hide it; select **Restore hidden titles** to bring it back. These choices stay on
-the device and never edit streaming apps' histories.
+the device and never edit streaming apps' histories. From the top bar, Down reaches the shelf heading;
+Down again reaches the last focused title. From a title, Up returns to the top bar and Down reaches the
+apps. The shelf moves out of the way in deeper app rows and returns at the first row.
 
 The date is supplied by each app and its meaning varies by entry type: it may be a viewing time,
 release date or watchlist date. Unknown dates appear only with **All available**. Progress sorting puts

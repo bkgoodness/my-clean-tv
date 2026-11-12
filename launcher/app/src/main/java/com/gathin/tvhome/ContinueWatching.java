@@ -14,7 +14,11 @@ import android.graphics.Color;
 import android.graphics.drawable.GradientDrawable;
 import android.text.TextUtils;
 import android.util.LruCache;
+import android.util.Log;
+import java.io.FileNotFoundException;
+import java.io.IOException;
 import android.view.Gravity;
+import android.view.KeyEvent;
 import android.widget.FrameLayout;
 import android.widget.ImageView;
 import java.io.InputStream;
@@ -51,7 +55,16 @@ final class ContinueWatching {
     };
     private final Activity activity;
     private final LinearLayout root;
+    interface Navigation { void top(); void apps(); }
     private final SharedPreferences prefs;
+    private final Navigation navigation;
+    private RecyclerView row;
+    private TextView heading;
+    private List<Item> displayed = Collections.emptyList();
+    private String lastFocusedKey;
+    private int lastFocusedIndex;
+    private int focusRequest;
+    private int expandedHeight;
     private final ExecutorService loader = Executors.newSingleThreadExecutor();
     private final ExecutorService artwork = Executors.newSingleThreadExecutor();
     private final Handler main = new Handler(Looper.getMainLooper());
@@ -59,8 +72,12 @@ final class ContinueWatching {
         @Override protected int sizeOf(String key, Bitmap bitmap) { return bitmap.getByteCount(); }
     };
     private List<Item> all = Collections.emptyList();
-    private int generation;
+    private int generation, artworkGeneration;
     private volatile boolean closed;
+    private final ArtworkDiagnostics diagnostics = new ArtworkDiagnostics();
+    private final Runnable reportArtwork = () -> {
+        if (!closed) Log.i("TvHome.Artwork", diagnostics.summary());
+    };
 
     static final class Item {
         String pkg, appLabel, title, episode, intent, stableId, poster, thumbnail;
@@ -71,20 +88,57 @@ final class ContinueWatching {
         float progress() { return position >= 0 && duration > 0 ? Math.min(1f, position / (float) duration) : -1f; }
     }
 
-    ContinueWatching(Activity activity, LinearLayout root) {
+    ContinueWatching(Activity activity, LinearLayout root, Navigation navigation) {
         this.activity = activity;
         this.root = root;
+        this.navigation = navigation;
         prefs = activity.getSharedPreferences("continue_watching", Activity.MODE_PRIVATE);
         draw("Loading…", Collections.emptyList());
     }
 
+    boolean hasEntries() { return row != null && !displayed.isEmpty(); }
+    boolean isCollapsed() { return root.getVisibility() == View.GONE && hasEntries(); }
+    int expandedHeight() { return expandedHeight; }
+    void setExpanded(boolean expanded) {
+        if (!hasEntries()) expanded = true;
+        int visibility = expanded ? View.VISIBLE : View.GONE;
+        if (root.getVisibility() != visibility) {
+            if (!expanded) { focusRequest++; expandedHeight = root.getHeight(); }
+            root.setVisibility(visibility);
+        }
+    }
+    boolean focusHeader() {
+        focusRequest++;
+        setExpanded(true);
+        return heading != null && heading.requestFocus();
+    }
     boolean focus() {
-        if (root.getChildCount() == 0) return false;
-        View child = root.getChildAt(0);
-        return child != null && child.requestFocus();
+        setExpanded(true);
+        if (!hasEntries()) return heading != null && heading.requestFocus();
+        List<String> keys = new ArrayList<>();
+        for (Item item : displayed) keys.add(focusKey(item));
+        int index = ContinueNavigation.restoredIndex(keys, lastFocusedKey, lastFocusedIndex);
+        RecyclerView target = row;
+        int request = ++focusRequest;
+        target.scrollToPosition(index);
+        target.postOnAnimation(new Runnable() {
+            int frames;
+            @Override public void run() {
+                if (closed || row != target || request != focusRequest || root.getVisibility() != View.VISIBLE) return;
+                RecyclerView.ViewHolder holder = target.findViewHolderForAdapterPosition(index);
+                if (holder != null) holder.itemView.requestFocus();
+                else if (++frames < 10) target.postOnAnimation(this);
+                else if (heading != null) heading.requestFocus();
+            }
+        });
+        return true;
+    }
+    private static String focusKey(Item item) {
+        String key = item.key(); return key == null ? item.alias() : key;
     }
 
-    void close() { closed = true; generation++; loader.shutdownNow(); artwork.shutdownNow(); artCache.evictAll(); }
+    void close() { closed = true; focusRequest++; generation++; main.removeCallbacks(reportArtwork);
+        loader.shutdownNow(); artwork.shutdownNow(); artCache.evictAll(); }
 
     void refresh() {
         if (closed) return;
@@ -179,14 +233,29 @@ final class ContinueWatching {
     }
     private void draw(String message, List<Item> items) {
         boolean hadFocus = root.hasFocus();
+        boolean focusedCard = row != null && row.hasFocus();
+        focusRequest++;
+        artworkGeneration++;
         root.removeAllViews();
-        TextView heading = text("Continue Watching  •  Settings  •  Hold OK on a title to hide");
-        heading.setOnClickListener(v -> settings()); root.addView(heading);
+        row = null;
+        displayed = items;
+        heading = text("Continue Watching  •  Settings  •  Hold OK on a title to hide");
+        heading.setOnClickListener(v -> settings());
+        heading.setOnKeyListener((v, key, event) -> {
+            if (key != KeyEvent.KEYCODE_DPAD_UP && key != KeyEvent.KEYCODE_DPAD_DOWN) return false;
+            if (event.getAction() == KeyEvent.ACTION_DOWN) {
+                if (key == KeyEvent.KEYCODE_DPAD_UP) navigation.top();
+                else if (!hasEntries()) navigation.apps();
+                else focus();
+            }
+            return true;
+        });
+        root.addView(heading);
         if (message != null) {
             TextView info = new TextView(activity); info.setText(message); info.setTextColor(0xffdddddd);
             root.addView(info);
         } else {
-            RecyclerView row = new RecyclerView(activity);
+            row = new RecyclerView(activity);
             row.setLayoutManager(new LinearLayoutManager(activity, RecyclerView.HORIZONTAL, false));
             row.setAdapter(new RecyclerView.Adapter<TitleHolder>() {
                 @NonNull @Override public TitleHolder onCreateViewHolder(@NonNull ViewGroup parent, int viewType) {
@@ -207,6 +276,30 @@ final class ContinueWatching {
                     Object token = new Object();
                     holder.card.setTag(token);
                     loadArtwork(holder, item.poster, item.thumbnail, token);
+                    holder.card.setOnFocusChangeListener((v, focused) -> {
+                        holder.card.setForeground(surface(Color.TRANSPARENT, 8, focused ? Color.WHITE : 0));
+                        if (focused) {
+                            focusRequest++;
+                            int position = holder.getBindingAdapterPosition();
+                            if (position != RecyclerView.NO_POSITION) lastFocusedIndex = position;
+                            lastFocusedKey = focusKey(item);
+                        }
+                    });
+                    holder.card.setOnKeyListener((v, key, event) -> {
+                        if (key == KeyEvent.KEYCODE_DPAD_UP || key == KeyEvent.KEYCODE_DPAD_DOWN) {
+                            if (event.getAction() == KeyEvent.ACTION_DOWN) {
+                                focusRequest++;
+                                if (key == KeyEvent.KEYCODE_DPAD_UP) navigation.top(); else navigation.apps();
+                            }
+                            return true;
+                        }
+                        if (key == KeyEvent.KEYCODE_DPAD_LEFT || key == KeyEvent.KEYCODE_DPAD_RIGHT) {
+                            int position = holder.getBindingAdapterPosition();
+                            boolean rtl = row != null && row.getLayoutDirection() == View.LAYOUT_DIRECTION_RTL;
+                            return ContinueNavigation.horizontalEdge(position, items.size(), rtl, key == KeyEvent.KEYCODE_DPAD_LEFT);
+                        }
+                        return false;
+                    });
                     holder.card.setOnClickListener(v -> open(item));
                     holder.card.setOnLongClickListener(v -> { hide(item); return true; });
                 }
@@ -214,7 +307,8 @@ final class ContinueWatching {
             });
             root.addView(row, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(150)));
         }
-        if (hadFocus) heading.requestFocus();
+        if (!hasEntries()) setExpanded(true);
+        if (hadFocus) { if (focusedCard && hasEntries()) focus(); else heading.requestFocus(); }
     }
     private GradientDrawable surface(int color, int radius, int stroke) {
         GradientDrawable result = new GradientDrawable(); result.setColor(color); result.setCornerRadius(dp(radius));
@@ -237,8 +331,6 @@ final class ContinueWatching {
             params.setMarginEnd(dp(8)); card.setLayoutParams(params);
             card.setFocusable(true); card.setClickable(true);
             card.setBackground(surface(0xe6202931, 8, 0));
-            card.setOnFocusChangeListener((v, focused) ->
-                    card.setForeground(surface(Color.TRANSPARENT, 8, focused ? Color.WHITE : 0)));
             art = new FrameLayout(activity); art.setBackground(surface(0xff303b46, 8, 0));
             art.setClipToOutline(true); card.addView(art, new LinearLayout.LayoutParams(dp(190), dp(107)));
             image = new ImageView(activity); image.setScaleType(ImageView.ScaleType.FIT_CENTER);
@@ -267,33 +359,65 @@ final class ContinueWatching {
         }
     }
 
+    private void reportSoon() {
+        main.removeCallbacks(reportArtwork);
+        main.postDelayed(reportArtwork, 500);
+    }
     private void loadArtwork(TitleHolder holder, String address, String thumbnail, Object token) {
-        if (closed || address == null && thumbnail == null) return;
+        if (closed) return;
+        diagnostics.sources(address, thumbnail);
+        reportSoon();
         List<String> candidates = ContinueArtwork.candidates(address, thumbnail);
         if (candidates.isEmpty()) return;
+        int requestedGeneration = artworkGeneration;
         artwork.execute(() -> {
             Bitmap result = ContinueArtwork.firstAvailable(candidates, this::decodeArtwork);
             main.post(() -> {
-                if (closed || result == null || !holder.card.isAttachedToWindow() || holder.card.getTag() != token) return;
+                if (!ContinueArtwork.bindingCurrent(closed, artworkGeneration, requestedGeneration,
+                        holder.card.getTag(), token)) { diagnostics.stale(); reportSoon(); return; }
+                if (result == null) { reportSoon(); return; }
+                // RecyclerView may bind/prefetch a valid holder before it is attached. Keep its image;
+                // the generation and binding token, rather than window attachment, reject stale results.
+                boolean detached = !holder.card.isAttachedToWindow();
                 holder.image.setImageBitmap(result); holder.fallback.setVisibility(View.GONE);
+                diagnostics.bound(detached); reportSoon();
+                holder.image.post(() -> {
+                    if (ContinueArtwork.bindingCurrent(closed, artworkGeneration, requestedGeneration,
+                            holder.card.getTag(), token) && holder.image.isShown()
+                            && holder.image.getDrawable() != null && holder.fallback.getVisibility() == View.GONE) {
+                        diagnostics.renderReady(); reportSoon();
+                    }
+                });
             });
         });
     }
     private Bitmap decodeArtwork(String address) {
-        Bitmap cached = artCache.get(address); if (cached != null) return cached;
+        Bitmap cached = artCache.get(address);
+        if (cached != null) { diagnostics.cacheHit(); return cached; }
         try {
             Uri uri = Uri.parse(address);
             BitmapFactory.Options options = new BitmapFactory.Options(); options.inJustDecodeBounds = true;
-            try (InputStream in = activity.getContentResolver().openInputStream(uri)) { BitmapFactory.decodeStream(in, null, options); }
-            if (options.outWidth <= 0 || options.outHeight <= 0) return null;
+            try (InputStream in = activity.getContentResolver().openInputStream(uri)) {
+                if (in == null) { diagnostics.unavailable(); return null; }
+                BitmapFactory.decodeStream(in, null, options);
+            }
+            if (options.outWidth <= 0 || options.outHeight <= 0) { diagnostics.decodeFailed(); return null; }
             options.inJustDecodeBounds = false; options.inSampleSize = 1;
             while (options.outWidth / options.inSampleSize > 512 || options.outHeight / options.inSampleSize > 512)
                 options.inSampleSize *= 2;
             Bitmap result;
-            try (InputStream in = activity.getContentResolver().openInputStream(uri)) { result = BitmapFactory.decodeStream(in, null, options); }
-            if (result != null && !closed) artCache.put(address, result);
+            try (InputStream in = activity.getContentResolver().openInputStream(uri)) {
+                if (in == null) { diagnostics.unavailable(); return null; }
+                result = BitmapFactory.decodeStream(in, null, options);
+            }
+            if (result == null) diagnostics.decodeFailed();
+            else { diagnostics.decoded(); if (!closed) artCache.put(address, result); }
             return result;
-        } catch (Exception | OutOfMemoryError ignored) { return null; }
+        } catch (SecurityException e) { diagnostics.denied(); }
+        catch (FileNotFoundException e) { diagnostics.unavailable(); }
+        catch (IOException e) { diagnostics.unavailable(); }
+        catch (RuntimeException | OutOfMemoryError e) { diagnostics.decodeFailed(); }
+        return null;
     }
     private void open(Item i) {
         Intent target = null;

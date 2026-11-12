@@ -18,7 +18,7 @@ class ContinueWatchingLifecycleTest(unittest.TestCase):
         refresh = source.split("void refresh()", 1)[1].split("loader.execute(", 1)[0]
         artwork = source.split("private void loadArtwork(", 1)[1].split("artwork.execute(", 1)[0]
         self.assertIn("if (closed) return;", refresh)
-        self.assertIn("closed || address == null", artwork)
+        self.assertIn("if (closed) return;", artwork)
 
 if __name__ == "__main__":
     unittest.main()

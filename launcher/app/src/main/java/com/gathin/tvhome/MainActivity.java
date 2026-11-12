@@ -103,6 +103,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
 
     private static final int LAUNCHER_SETTINGS_REQUEST = 42;
     private ContinueWatching continueWatching;
+    private View continueTopAnchor;
     /** Sent by QuickSettingsActivity: open Launcher settings from here so Home rebuilds when they close. */
     static final String ACTION_LAUNCHER_SETTINGS = "com.gathin.tvhome.action.LAUNCHER_SETTINGS";
     /** Sent by the "library" action word of app_keys: open the App library over Home (needs app_library). */
@@ -460,7 +461,14 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
-        continueWatching = new ContinueWatching(this, findViewById(R.id.continueWatching));
+        continueWatching = new ContinueWatching(this, findViewById(R.id.continueWatching), new ContinueWatching.Navigation() {
+            @Override public void top() {
+                View target = continueTopAnchor;
+                if (target == null || !target.isShown() || !target.isFocusable()) target = firstTopButton();
+                target.requestFocus();
+            }
+            @Override public void apps() { focusTile(singleRow ? lastFocused : lastFocused % COLUMNS); }
+        });
         density = getResources().getDisplayMetrics().density;
         // config.xml, overlaid by config.json from a pushed theme (see Config and tools/theme.sh).
         Config cfg = Config.load(this);
@@ -710,9 +718,13 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         int rowsBelowDock = cfg.rowsBelowDock;
         grid.addOnLayoutChangeListener((v, l, t, r, b, ol, ot, or, ob) -> {
             int h = b - t;
+            boolean shelfCollapsed = continueWatching != null && continueWatching.isCollapsed();
+            int sizingHeight = ContinueNavigation.tileSizingHeight(h, shelfCollapsed,
+                    continueWatching == null ? 0 : continueWatching.expandedHeight());
+            adapter.setSizingHeightOverride(shelfCollapsed ? sizingHeight : 0);
             // Item height follows the tile size, which follows the columns and the rows that must fit (AppAdapter.tileWidthPx).
             int inner = (r - l) - grid.getPaddingLeft() - grid.getPaddingRight();
-            int tileW = AppAdapter.tileWidthPx(inner, h, COLUMNS, rowsBelowDock, cfg.dockTitle, cfg.dockRow, density);
+            int tileW = AppAdapter.tileWidthPx(inner, sizingHeight, COLUMNS, rowsBelowDock, cfg.dockTitle, cfg.dockRow, density);
             int itemH = AppAdapter.itemHeightPx(AppAdapter.tileHeightPx(tileW), density);
             int dockRow = itemH + (int) (AppAdapter.DOCK_EXTRA_DP * density);   // item height plus DockDecoration offsets
             int gridRows = itemH * rowsBelowDock;
@@ -906,7 +918,11 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
             if (event.getAction() != KeyEvent.ACTION_DOWN) return false;
             if (keyCode == KeyEvent.KEYCODE_DPAD_UP) return true;
             if (keyCode == KeyEvent.KEYCODE_DPAD_DOWN) {
-                // Back to the dock tile Up came from, not wherever the focus finder lands.
+                // The shelf sits between the top controls and the app area.
+                if (continueWatching != null && ContinueNavigation.topDownToShelf(continueWatching.hasEntries(), reordering)) {
+                    continueTopAnchor = v;
+                    if (continueWatching.focusHeader()) return true;
+                }
                 focusTile(singleRow ? lastFocused : lastFocused % COLUMNS);
                 return true;
             }
@@ -1819,6 +1835,11 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
 
     @Override
     public void onTileFocused(int position, View card) {
+        if (continueWatching != null && !reordering && !singleRow) {
+            boolean collapse = ContinueNavigation.collapseShelf(continueWatching.hasEntries(), false, false, position, COLUMNS);
+            if (collapse && !continueWatching.isCollapsed()) adapter.setSizingHeightOverride(grid.getHeight());
+            continueWatching.setExpanded(!collapse);
+        }
         lastFocused = position;
         lastFocusedKey = adapter.keyAt(position);
         // Focus restored before the first layout (cold start): the tile has no size yet, and the glass
@@ -2452,7 +2473,8 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
             // One row: Up leaves for the top bar, Down has nowhere to go, and Left/Right walk the whole row,
             // stopping at its two ends (the default focus search scrolls the row to the next tile).
             if (keyCode == KeyEvent.KEYCODE_DPAD_UP) {
-                if (!reordering && continueWatching != null && continueWatching.focus()) return true;
+                if (continueWatching != null && ContinueNavigation.appUpToShelf(position, COLUMNS, singleRow, reordering)
+                        && continueWatching.focus()) return true;
                 return false;
             }
             if (keyCode == KeyEvent.KEYCODE_DPAD_DOWN) return true;
@@ -2479,7 +2501,8 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         }
         if (keyCode == KeyEvent.KEYCODE_DPAD_UP) {
             if (position < COLUMNS) {
-                if (!reordering && continueWatching != null && continueWatching.focus()) return true;
+                if (continueWatching != null && ContinueNavigation.appUpToShelf(position, COLUMNS, singleRow, reordering)
+                        && continueWatching.focus()) return true;
                 return false;
             }
             target = position - COLUMNS;
