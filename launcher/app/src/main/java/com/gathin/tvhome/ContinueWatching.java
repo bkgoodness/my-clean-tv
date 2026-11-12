@@ -45,13 +45,21 @@ import java.util.List;
 import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.ArrayBlockingQueue;
+import java.util.concurrent.TimeUnit;
 
 /** A private, read-only view of Android TV's provider-published Watch Next entries. */
 final class ContinueWatching {
     private static final String PERMISSION = "android.permission.READ_TV_LISTINGS";
-    private static final String[] FIELDS = {
+    private static final String[] BASE_FIELDS = {
             "package_name", "title", "episode_title", "watch_next_type", "last_engagement_time_utc_millis",
             "last_playback_position_millis", "duration_millis", "intent_uri", "internal_provider_id", "poster_art_uri", "thumbnail_uri"
+    };
+    private static final String[] FIELDS = {
+            "package_name", "title", "episode_title", "watch_next_type", "last_engagement_time_utc_millis",
+            "last_playback_position_millis", "duration_millis", "intent_uri", "internal_provider_id", "poster_art_uri", "thumbnail_uri",
+            "season_display_number", "episode_display_number", "type"
     };
     private final Activity activity;
     private final LinearLayout root;
@@ -66,7 +74,11 @@ final class ContinueWatching {
     private int focusRequest;
     private int expandedHeight;
     private final ExecutorService loader = Executors.newSingleThreadExecutor();
-    private final ExecutorService artwork = Executors.newSingleThreadExecutor();
+    private final ThreadPoolExecutor artwork = new ThreadPoolExecutor(1, 1, 0, TimeUnit.MILLISECONDS,
+            new ArrayBlockingQueue<>(8), new ThreadPoolExecutor.AbortPolicy());
+    private final ArtworkNetwork online = new ArtworkNetwork();
+    private final ArtworkDiskCache diskCache;
+    private volatile boolean onlineEnabled;
     private final Handler main = new Handler(Looper.getMainLooper());
     private final LruCache<String, Bitmap> artCache = new LruCache<String, Bitmap>(4 * 1024 * 1024) {
         @Override protected int sizeOf(String key, Bitmap bitmap) { return bitmap.getByteCount(); }
@@ -80,9 +92,12 @@ final class ContinueWatching {
     };
 
     static final class Item {
-        String pkg, appLabel, title, episode, intent, stableId, poster, thumbnail;
+        String pkg, appLabel, title, episode, seasonNumber, episodeNumber, intent, stableId, poster, thumbnail;
         long engaged, position, duration;
-        int type;
+        int type, mediaType;
+        boolean episodic() { return mediaType == TvContract.WatchNextPrograms.TYPE_TV_EPISODE
+                || (episode != null && !episode.trim().isEmpty()) || (episodeNumber != null && !episodeNumber.trim().isEmpty())
+                || (seasonNumber != null && !seasonNumber.trim().isEmpty()); }
         String key() { return identity(pkg, stableId, intent); }
         String alias() { return identity(pkg, "title:" + title + "\n" + (episode == null ? "" : episode), null); }
         float progress() { return position >= 0 && duration > 0 ? Math.min(1f, position / (float) duration) : -1f; }
@@ -93,6 +108,9 @@ final class ContinueWatching {
         this.root = root;
         this.navigation = navigation;
         prefs = activity.getSharedPreferences("continue_watching", Activity.MODE_PRIVATE);
+        diskCache = new ArtworkDiskCache(new java.io.File(activity.getCacheDir(), "continue-artwork"));
+        onlineEnabled = prefs.getBoolean("online_artwork", true);
+        online.setEnabled(onlineEnabled);
         draw("Loading…", Collections.emptyList());
     }
 
@@ -138,7 +156,7 @@ final class ContinueWatching {
     }
 
     void close() { closed = true; focusRequest++; generation++; main.removeCallbacks(reportArtwork);
-        loader.shutdownNow(); artwork.shutdownNow(); artCache.evictAll(); }
+        online.close(); loader.shutdownNow(); artwork.shutdownNow(); artCache.evictAll(); }
 
     void refresh() {
         if (closed) return;
@@ -152,16 +170,22 @@ final class ContinueWatching {
             List<Item> items = new ArrayList<>();
             java.util.Map<String, String> labels = new java.util.HashMap<>();
             String error = null;
-            try (Cursor c = activity.getContentResolver().query(TvContract.WatchNextPrograms.CONTENT_URI,
-                    FIELDS, null, null, null)) {
+            try (Cursor c = queryWatchNext()) {
                 if (c == null) error = "TV listings are unavailable.";
-                else while (c.moveToNext()) {
+                else {
+                    int seasonIndex = c.getColumnIndex("season_display_number");
+                    int episodeIndex = c.getColumnIndex("episode_display_number");
+                    int typeIndex = c.getColumnIndex("type");
+                    while (c.moveToNext()) {
                     Item i = new Item();
                     i.pkg = c.getString(0); i.title = c.getString(1); i.episode = c.getString(2);
                     i.type = c.getInt(3); i.engaged = c.getLong(4);
                     i.position = c.isNull(5) ? -1 : c.getLong(5); i.duration = c.isNull(6) ? -1 : c.getLong(6);
                     i.intent = c.getString(7); i.stableId = c.getString(8);
                     i.poster = c.getString(9); i.thumbnail = c.getString(10);
+                    i.seasonNumber = seasonIndex < 0 ? null : c.getString(seasonIndex);
+                    i.episodeNumber = episodeIndex < 0 ? null : c.getString(episodeIndex);
+                    i.mediaType = typeIndex < 0 || c.isNull(typeIndex) ? -1 : c.getInt(typeIndex);
                     if (i.pkg != null && i.title != null && !i.title.trim().isEmpty()) {
                         i.appLabel = labels.get(i.pkg);
                         if (i.appLabel == null) {
@@ -172,6 +196,7 @@ final class ContinueWatching {
                         }
                         items.add(i);
                     }
+                    }
                 }
             } catch (RuntimeException e) { error = "TV listings are unavailable or access was denied."; }
             String message = error;
@@ -181,6 +206,15 @@ final class ContinueWatching {
                 showFiltered(message);
             });
         });
+    }
+
+    private Cursor queryWatchNext() {
+        try {
+            return activity.getContentResolver().query(TvContract.WatchNextPrograms.CONTENT_URI, FIELDS, null, null, null);
+        } catch (IllegalArgumentException | android.database.sqlite.SQLiteException unsupportedColumns) {
+            // Some TV providers omit optional metadata columns; retain the previous projection there.
+            return activity.getContentResolver().query(TvContract.WatchNextPrograms.CONTENT_URI, BASE_FIELDS, null, null, null);
+        }
     }
 
     private void showFiltered(String error) {
@@ -263,8 +297,7 @@ final class ContinueWatching {
                 }
                 @Override public void onBindViewHolder(@NonNull TitleHolder holder, int index) {
                     Item item = items.get(index);
-                    String subtitle = item.episode == null || item.episode.isEmpty()
-                            ? item.appLabel : item.appLabel + " · " + item.episode;
+                    String subtitle = ContinueArtwork.metadata(item.appLabel, item.seasonNumber, item.episodeNumber, item.episode);
                     holder.title.setText(item.title);
                     holder.subtitle.setText(subtitle);
                     holder.card.setContentDescription(item.title + ", " + subtitle
@@ -275,7 +308,8 @@ final class ContinueWatching {
                     holder.progress.setProgress(item.progress());
                     Object token = new Object();
                     holder.card.setTag(token);
-                    loadArtwork(holder, item.poster, item.thumbnail, token);
+                    holder.item = item; holder.binding = token; holder.scheduled = null;
+                    if (holder.card.isAttachedToWindow()) { holder.active = true; scheduleArtwork(holder, item, token); }
                     holder.card.setOnFocusChangeListener((v, focused) -> {
                         holder.card.setForeground(surface(Color.TRANSPARENT, 8, focused ? Color.WHITE : 0));
                         if (focused) {
@@ -303,6 +337,13 @@ final class ContinueWatching {
                     holder.card.setOnClickListener(v -> open(item));
                     holder.card.setOnLongClickListener(v -> { hide(item); return true; });
                 }
+                @Override public void onViewAttachedToWindow(@NonNull TitleHolder holder) {
+                    super.onViewAttachedToWindow(holder); holder.active = true;
+                    if (holder.item != null) scheduleArtwork(holder, holder.item, holder.binding);
+                }
+                @Override public void onViewDetachedFromWindow(@NonNull TitleHolder holder) {
+                    holder.active = false; holder.scheduled = null; super.onViewDetachedFromWindow(holder);
+                }
                 @Override public int getItemCount() { return items.size(); }
             });
             root.addView(row, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(150)));
@@ -324,6 +365,7 @@ final class ContinueWatching {
     private final class TitleHolder extends RecyclerView.ViewHolder {
         final LinearLayout card; final FrameLayout art; final ImageView image;
         final TextView fallback, title, subtitle; final ProgressStrip progress;
+        volatile boolean active; volatile Object binding; Object scheduled; Item item;
         TitleHolder() { this(new LinearLayout(activity)); }
         private TitleHolder(LinearLayout root) {
             super(root); card = root; card.setOrientation(LinearLayout.VERTICAL);
@@ -363,59 +405,95 @@ final class ContinueWatching {
         main.removeCallbacks(reportArtwork);
         main.postDelayed(reportArtwork, 500);
     }
-    private void loadArtwork(TitleHolder holder, String address, String thumbnail, Object token) {
-        if (closed) return;
-        diagnostics.sources(address, thumbnail);
-        reportSoon();
-        List<String> candidates = ContinueArtwork.candidates(address, thumbnail);
-        if (candidates.isEmpty()) return;
-        int requestedGeneration = artworkGeneration;
-        artwork.execute(() -> {
-            Bitmap result = ContinueArtwork.firstAvailable(candidates, this::decodeArtwork);
-            main.post(() -> {
-                if (!ContinueArtwork.bindingCurrent(closed, artworkGeneration, requestedGeneration,
-                        holder.card.getTag(), token)) { diagnostics.stale(); reportSoon(); return; }
-                if (result == null) { reportSoon(); return; }
-                // RecyclerView may bind/prefetch a valid holder before it is attached. Keep its image;
-                // the generation and binding token, rather than window attachment, reject stale results.
-                boolean detached = !holder.card.isAttachedToWindow();
-                holder.image.setImageBitmap(result); holder.fallback.setVisibility(View.GONE);
-                diagnostics.bound(detached); reportSoon();
-                holder.image.post(() -> {
-                    if (ContinueArtwork.bindingCurrent(closed, artworkGeneration, requestedGeneration,
-                            holder.card.getTag(), token) && holder.image.isShown()
-                            && holder.image.getDrawable() != null && holder.fallback.getVisibility() == View.GONE) {
-                        diagnostics.renderReady(); reportSoon();
-                    }
-                });
-            });
+    private void scheduleArtwork(TitleHolder holder, Item item, Object token) {
+        if (closed || token == null || holder.scheduled == token) return;
+        holder.scheduled = token;
+        holder.card.post(() -> {
+            if (closed || !holder.active || holder.binding != token) return;
+            loadArtwork(holder, item.poster, item.thumbnail, item.episodic(), token);
         });
     }
+    private void loadArtwork(TitleHolder holder, String address, String thumbnail, boolean episodic, Object token) {
+        if (closed) return;
+        diagnostics.sources(address, thumbnail); reportSoon();
+        List<String> candidates = ContinueArtwork.candidates(address, thumbnail, episodic, onlineEnabled);
+        if (candidates.isEmpty()) return;
+        int requestedGeneration = artworkGeneration;
+        try {
+            artwork.execute(() -> {
+                Bitmap result = ContinueArtwork.firstAvailable(candidates, candidate -> {
+                    if (closed || !holder.active || holder.binding != token) return null;
+                    return decodeArtwork(candidate);
+                });
+                main.post(() -> {
+                    if (!ContinueArtwork.bindingCurrent(closed, artworkGeneration, requestedGeneration,
+                            holder.card.getTag(), token)) { diagnostics.stale(); reportSoon(); return; }
+                    if (result == null) { reportSoon(); return; }
+                    boolean detached = !holder.card.isAttachedToWindow();
+                    holder.image.setImageBitmap(result); holder.fallback.setVisibility(View.GONE);
+                    diagnostics.bound(detached); reportSoon();
+                    holder.image.post(() -> {
+                        if (ContinueArtwork.bindingCurrent(closed, artworkGeneration, requestedGeneration,
+                                holder.card.getTag(), token) && holder.image.isShown()
+                                && holder.image.getDrawable() != null && holder.fallback.getVisibility() == View.GONE) {
+                            diagnostics.renderReady(); reportSoon();
+                        }
+                    });
+                });
+            });
+        } catch (java.util.concurrent.RejectedExecutionException e) {
+            holder.scheduled = null;
+            if (!closed) holder.card.postDelayed(() -> {
+                if (holder.active && holder.binding == token) scheduleArtwork(holder, holder.item, token);
+            }, 500);
+        }
+    }
     private Bitmap decodeArtwork(String address) {
+        boolean remote = ContinueArtwork.source(address) == ContinueArtwork.Source.WEB;
+        if (remote && (!onlineEnabled || !online.enabled())) return null;
         Bitmap cached = artCache.get(address);
         if (cached != null) { diagnostics.cacheHit(); return cached; }
         try {
-            Uri uri = Uri.parse(address);
             BitmapFactory.Options options = new BitmapFactory.Options(); options.inJustDecodeBounds = true;
-            try (InputStream in = activity.getContentResolver().openInputStream(uri)) {
-                if (in == null) { diagnostics.unavailable(); return null; }
-                BitmapFactory.decodeStream(in, null, options);
+            byte[] data = null; boolean disk = false;
+            if (remote) {
+                try { data = diskCache.get(address, System.currentTimeMillis()); } catch (IOException ignored) { }
+                disk = data != null;
+                if (disk) diagnostics.remoteCacheHit();
+                if (data == null) { diagnostics.remoteRequest(); data = online.fetch(address); }
+                if (!onlineEnabled || !online.enabled()) return null;
+                BitmapFactory.decodeByteArray(data, 0, data.length, options);
+            } else {
+                Uri uri = Uri.parse(address);
+                try (InputStream in = activity.getContentResolver().openInputStream(uri)) {
+                    if (in == null) { diagnostics.unavailable(); return null; }
+                    BitmapFactory.decodeStream(in, null, options);
+                }
             }
-            if (options.outWidth <= 0 || options.outHeight <= 0) { diagnostics.decodeFailed(); return null; }
-            options.inJustDecodeBounds = false; options.inSampleSize = 1;
-            while (options.outWidth / options.inSampleSize > 512 || options.outHeight / options.inSampleSize > 512)
-                options.inSampleSize *= 2;
+            if (options.outWidth <= 0 || options.outHeight <= 0) {
+                if (remote && disk) try { diskCache.remove(address); } catch (IOException ignored) { }
+                diagnostics.decodeFailed(); return null;
+            }
+            options.inJustDecodeBounds = false;
+            options.inSampleSize = ContinueArtwork.sampleSize(options.outWidth, options.outHeight);
             Bitmap result;
-            try (InputStream in = activity.getContentResolver().openInputStream(uri)) {
+            if (remote) result = BitmapFactory.decodeByteArray(data, 0, data.length, options);
+            else try (InputStream in = activity.getContentResolver().openInputStream(Uri.parse(address))) {
                 if (in == null) { diagnostics.unavailable(); return null; }
                 result = BitmapFactory.decodeStream(in, null, options);
             }
-            if (result == null) diagnostics.decodeFailed();
-            else { diagnostics.decoded(); if (!closed) artCache.put(address, result); }
+            if (remote && (!onlineEnabled || !online.enabled())) { if (result != null) result.recycle(); return null; }
+            if (result == null) {
+                if (remote && disk) try { diskCache.remove(address); } catch (IOException ignored) { }
+                diagnostics.decodeFailed();
+            } else {
+                diagnostics.decoded(); if (!closed) artCache.put(address, result);
+                if (remote && !disk && onlineEnabled) try { diskCache.put(address, data, System.currentTimeMillis()); } catch (IOException ignored) { }
+            }
             return result;
         } catch (SecurityException e) { diagnostics.denied(); }
         catch (FileNotFoundException e) { diagnostics.unavailable(); }
-        catch (IOException e) { diagnostics.unavailable(); }
+        catch (IOException e) { diagnostics.unavailable(); if (remote) diagnostics.remoteFailed(); }
         catch (RuntimeException | OutOfMemoryError e) { diagnostics.decodeFailed(); }
         return null;
     }
@@ -453,13 +531,24 @@ final class ContinueWatching {
     }
     private void settings() {
         new AlertDialog.Builder(activity).setTitle("Continue Watching")
-                .setItems(new String[]{"Allow or refresh TV listings", "Streaming apps", "Freshness", "Sort order", "Restore hidden titles"}, (d, which) -> {
+                .setItems(new String[]{"Allow or refresh TV listings", "Streaming apps", "Freshness", "Sort order", "Restore hidden titles",
+                        activity.getString(onlineEnabled ? R.string.online_artwork_on : R.string.online_artwork_off)}, (d, which) -> {
                     if (which == 0) {
                         if (activity.checkSelfPermission(PERMISSION) != PackageManager.PERMISSION_GRANTED)
                             activity.requestPermissions(new String[]{PERMISSION}, 82);
                         else refresh();
                     } else if (which == 1) apps(); else if (which == 2) days();
-                    else if (which == 3) sort(); else restore();
+                    else if (which == 3) sort(); else if (which == 4) restore(); else onlineSetting();
+                }).setNegativeButton(android.R.string.cancel, null).show();
+    }
+    private void onlineSetting() {
+        new AlertDialog.Builder(activity).setTitle(R.string.online_artwork_title)
+                .setMessage(R.string.online_artwork_description)
+                .setPositiveButton(onlineEnabled ? R.string.online_artwork_turn_off : R.string.online_artwork_turn_on, (dialog, which) -> {
+                    boolean value = !onlineEnabled;
+                    onlineEnabled = value; online.setEnabled(value);
+                    prefs.edit().putBoolean("online_artwork", value).apply();
+                    artCache.evictAll(); showFiltered(null);
                 }).setNegativeButton(android.R.string.cancel, null).show();
     }
     private void apps() {

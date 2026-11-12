@@ -198,4 +198,10 @@
     <string name="wallpaper_slideshow_exclude">Exclude from slideshow</string>
     <string name="wallpaper_slideshow_include">Include in slideshow</string>
     <string name="wallpaper_slideshow_excluded_item">%1$s · excluded</string>
+    <string name="online_artwork_on">Load online artwork — On</string>
+    <string name="online_artwork_off">Load online artwork — Off</string>
+    <string name="online_artwork_title">Load online artwork</string>
+    <string name="online_artwork_description">When on, artwork may contact the streaming provider’s image host. Images are cached privately on this device. Turn off to stop online artwork requests; local artwork still works.</string>
+    <string name="online_artwork_turn_off">Turn off</string>
+    <string name="online_artwork_turn_on">Turn on</string>
 </resources>

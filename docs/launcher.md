@@ -100,9 +100,17 @@ apps. The shelf moves out of the way in deeper app rows and returns at the first
 The date is supplied by each app and its meaning varies by entry type: it may be a viewing time,
 release date or watchlist date. Unknown dates appear only with **All available**. Progress sorting puts
 entries without usable progress last. Some services do not publish entries visible to other apps, and
-access can be denied by the TV provider. Cards use locally accessible poster art or, if it is unavailable,
-the thumbnail. Remote and inaccessible artwork is not fetched; the card instead shows the streaming app
-and title. The artwork's proportions are preserved, and available playback progress appears on the image.
+access can be denied by the TV provider. Episodic cards prefer the provider's thumbnail and fall back to
+its poster; other cards try the poster first. These are provider images and are not guaranteed to depict a
+specific episode. The artwork's proportions are preserved, and available playback progress appears on the image.
+
+**Load online artwork** in the Continue Watching menu is on by default. While on, HTTPS artwork provided by
+Watch Next may contact the streaming provider's image host; the URL can reveal the requested image and the
+connection reveals the device's IP address. The provider-supplied URL, including any query, is sent as given;
+the launcher adds no account credentials or cookies. Turning it off
+stops new online artwork requests; local artwork and fallback cards remain available. Disposable image copies
+are kept in private app cache, up to 16 MiB and seven days, and may be removed by Android. HTTP, private or
+local destinations, and unsafe redirects are rejected.
 
 A hidden title uses the provider's content ID when available, otherwise its launch intent, and also a
 package/title/episode fingerprint to recognize common republished entries. Matching titles in the same

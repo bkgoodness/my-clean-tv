@@ -34,6 +34,26 @@ public class ContinueArtworkTest {
                 address -> address.endsWith("poster") ? null : "thumbnail"));
         assertNull(ContinueArtwork.firstAvailable(addresses, address -> null));
     }
+    @Test public void episodicThumbnailsAndOnlineSwitchRespectFallbackOrder() {
+        String poster = "https://cdn.example.com/poster", thumb = "content://provider/thumbnail";
+        assertEquals(Arrays.asList(thumb, poster), ContinueArtwork.candidates(poster, thumb, true, true));
+        assertEquals(Arrays.asList(poster, thumb), ContinueArtwork.candidates(poster, thumb, false, true));
+        assertEquals(Collections.singletonList(thumb), ContinueArtwork.candidates(poster, thumb, true, false));
+        assertTrue(ContinueArtwork.candidates("http://cdn.example.com/p", null, false, true).isEmpty());
+    }
+    @Test public void decodedDimensionsStayBounded() {
+        for (int[] dimensions : new int[][]{{4000,3000}, {1, 10000}, {512,512}, {Integer.MAX_VALUE,1}}) {
+            int sample = ContinueArtwork.sampleSize(dimensions[0], dimensions[1]);
+            assertTrue(dimensions[0] / sample <= 512); assertTrue(dimensions[1] / sample <= 512);
+        }
+        assertEquals(0, ContinueArtwork.sampleSize(0, 100));
+    }
+    @Test public void episodeMetadataIncludesOnlyProvidedValues() {
+        assertEquals("App · S2 E3 · Finale", ContinueArtwork.metadata("App", "2", "3", "Finale"));
+        assertEquals("App · E3", ContinueArtwork.metadata("App", null, "3", null));
+        assertEquals("App", ContinueArtwork.metadata("App", null, null, null));
+        assertEquals("App · S2 E3", ContinueArtwork.metadata("App", "S2", "E3", ""));
+    }
     @Test public void preAttachedBindingsRemainValidButStaleAndRecycledBindingsAreRejected() {
         Object token = new Object();
         assertTrue(ContinueArtwork.bindingCurrent(false, 7, 7, token, token));
@@ -46,7 +66,7 @@ public class ContinueArtworkTest {
         stats.sources("https://private.example/secret", "content://provider/private-title");
         stats.sources(null, ""); stats.decoded(); stats.bound(true); stats.renderReady(); stats.denied();
         String summary = stats.summary();
-        assertTrue(summary.contains("missing=1")); assertTrue(summary.contains("web_skipped=1"));
+        assertTrue(summary.contains("missing=1")); assertTrue(summary.contains("web_sources=1"));
         assertTrue(summary.contains("local=1")); assertTrue(summary.contains("bound_detached=1"));
         assertTrue(summary.contains("render_ready=1"));
         assertFalse(summary.contains("private")); assertFalse(summary.contains("provider"));
