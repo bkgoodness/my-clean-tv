@@ -76,6 +76,7 @@ final class ContinueWatching {
     void close() { closed = true; generation++; loader.shutdownNow(); artwork.shutdownNow(); }
 
     void refresh() {
+        if (closed) return;
         int request = ++generation;
         if (activity.checkSelfPermission(PERMISSION) != PackageManager.PERMISSION_GRANTED) {
             all = Collections.emptyList();
@@ -206,7 +207,7 @@ final class ContinueWatching {
     }
 
     private void loadArtwork(TextView card, String address) {
-        if (address == null) return;
+        if (closed || address == null) return;
         Uri uri = Uri.parse(address);
         if (!"content".equals(uri.getScheme()) && !"android.resource".equals(uri.getScheme())) return;
         artwork.execute(() -> {
