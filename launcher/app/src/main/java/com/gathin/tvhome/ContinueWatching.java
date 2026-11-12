@@ -211,6 +211,10 @@ final class ContinueWatching {
                     }
                 }
             } catch (RuntimeException e) { error = "TV listings are unavailable or access was denied."; }
+            if (report != null && error == null) {
+                for (Item item : items) if (WatchNextDiagnostics.source(item.pkg) == WatchNextDiagnostics.Source.GOODNESSFLIX
+                        && WatchNextDiagnostics.artwork(item.poster) == WatchNextDiagnostics.Artwork.CONTENT) probeContentArtwork(report, item.poster);
+            }
             String message = error;
             main.post(() -> {
                 if (closed || request != generation || activity.isFinishing()) return;
@@ -218,14 +222,65 @@ final class ContinueWatching {
                 showFiltered(message);
                 if (report != null) {
                     if (message == null) {
-                        String summary = report.summary();
-                        Log.i("TvHome.SourceDiag", summary);
-                        new AlertDialog.Builder(activity).setTitle("Watch Next source diagnostics")
-                                .setMessage(summary).setPositiveButton(android.R.string.ok, null).show();
+                        // Let the normal visible-card loader run before inspecting its existing bindings.
+                        main.postDelayed(() -> {
+                            if (closed || request != generation || activity.isFinishing()) return;
+                            String summary = report.summary() + bindingSummary();
+                            Log.i("TvHome.SourceDiag", summary);
+                            new AlertDialog.Builder(activity).setTitle("Watch Next source diagnostics")
+                                    .setMessage(summary).setPositiveButton(android.R.string.ok, null).show();
+                        }, 10000);
                     } else Toast.makeText(activity, message, Toast.LENGTH_LONG).show();
                 }
             });
         });
+    }
+
+    // One-shot diagnostic only: exercise the same two content-stream decode passes as the card loader.
+    private void probeContentArtwork(WatchNextDiagnostics report, String address) {
+        boolean opened = false, bounds = false, reopened = false, decoded = false;
+        WatchNextDiagnostics.Failure failure = WatchNextDiagnostics.Failure.NONE;
+        try {
+            BitmapFactory.Options options = new BitmapFactory.Options(); options.inJustDecodeBounds = true;
+            try (InputStream in = activity.getContentResolver().openInputStream(Uri.parse(address))) {
+                if (in == null) failure = WatchNextDiagnostics.Failure.EMPTY;
+                else { opened = true; BitmapFactory.decodeStream(in, null, options); }
+            }
+            if (opened) {
+                bounds = options.outWidth > 0 && options.outHeight > 0;
+                if (!bounds) failure = WatchNextDiagnostics.Failure.INVALID;
+                else {
+                    options.inJustDecodeBounds = false;
+                    options.inSampleSize = ContinueArtwork.sampleSize(options.outWidth, options.outHeight);
+                    try (InputStream in = activity.getContentResolver().openInputStream(Uri.parse(address))) {
+                        if (in == null) failure = WatchNextDiagnostics.Failure.EMPTY;
+                        else {
+                            reopened = true; Bitmap image = BitmapFactory.decodeStream(in, null, options);
+                            decoded = image != null;
+                            if (image != null) image.recycle(); else failure = WatchNextDiagnostics.Failure.INVALID;
+                        }
+                    }
+                }
+            }
+        } catch (SecurityException e) { failure = WatchNextDiagnostics.Failure.DENIED; }
+        catch (IOException e) { failure = WatchNextDiagnostics.Failure.IO; }
+        catch (RuntimeException | OutOfMemoryError e) { failure = WatchNextDiagnostics.Failure.OTHER; }
+        report.probe(opened, bounds, reopened, decoded, failure);
+    }
+    private String bindingSummary() {
+        int attached = 0, ready = 0, fallback = 0, mismatched = 0;
+        if (row != null) for (int n = 0; n < row.getChildCount(); n++) {
+            RecyclerView.ViewHolder viewHolder = row.getChildViewHolder(row.getChildAt(n));
+            if (!(viewHolder instanceof TitleHolder)) continue;
+            TitleHolder h = (TitleHolder) viewHolder;
+            if (h.item == null || WatchNextDiagnostics.source(h.item.pkg) != WatchNextDiagnostics.Source.GOODNESSFLIX) continue;
+            attached++;
+            if (h.binding == null || h.card.getTag() != h.binding) mismatched++;
+            else if (h.image.getDrawable() != null && h.fallback.getVisibility() == View.GONE) ready++;
+            else fallback++;
+        }
+        return "\nGOODNESSFLIX attached_cards=" + attached + " image_bound=" + ready
+                + " fallback_or_pending=" + fallback + " token_mismatch=" + mismatched;
     }
 
     private Cursor queryWatchNext() {

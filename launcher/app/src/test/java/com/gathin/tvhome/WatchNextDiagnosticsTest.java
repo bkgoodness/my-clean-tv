@@ -6,6 +6,9 @@ public class WatchNextDiagnosticsTest {
   WatchNextDiagnostics d=new WatchNextDiagnostics();
   assertEquals(WatchNextDiagnostics.Source.YOUTUBE,WatchNextDiagnostics.source("com.google.android.youtube.tv"));
   assertEquals(WatchNextDiagnostics.Source.OTHER,WatchNextDiagnostics.source("com.google.android.youtube.tv.spoof"));
+  assertEquals(WatchNextDiagnostics.Source.YOUTUBE_TV,WatchNextDiagnostics.source("com.google.android.youtube.tvunplugged"));
+  assertEquals(WatchNextDiagnostics.Source.YOUTUBE_MUSIC,WatchNextDiagnostics.source("com.google.android.youtube.tvmusic"));
+  assertEquals(WatchNextDiagnostics.Source.GOOGLE_VIDEO,WatchNextDiagnostics.source("com.google.android.videos"));
   d.add(WatchNextDiagnostics.Source.YOUTUBE,false,true,true,false,WatchNextDiagnostics.Artwork.MISSING,WatchNextDiagnostics.Artwork.MISSING,false);
   d.add(WatchNextDiagnostics.Source.GOODNESSFLIX,true,false,false,true,WatchNextDiagnostics.Artwork.CONTENT,WatchNextDiagnostics.Artwork.HTTPS,true);
   String s=d.summary();
@@ -13,6 +16,13 @@ public class WatchNextDiagnosticsTest {
   assertTrue(s.contains("YOUTUBE entries=1 missing=0 excluded=1 stale=1 hidden=0"));
   assertTrue(s.contains("GOODNESSFLIX entries=1 missing=1 excluded=0 stale=0 hidden=1 visible=0 intent_present=1"));
   assertTrue(s.contains("poster_CONTENT=1")); assertTrue(s.contains("thumbnail_HTTPS=1"));
+ }
+ @Test public void probesRecordOnlyAggregateStages() {
+  WatchNextDiagnostics d=new WatchNextDiagnostics();
+  d.probe(true,true,true,true,WatchNextDiagnostics.Failure.NONE);
+  d.probe(false,false,false,false,WatchNextDiagnostics.Failure.DENIED);
+  d.probe(true,false,false,false,WatchNextDiagnostics.Failure.INVALID);
+  assertTrue(d.summary().contains("probe attempted=3 opened=2 bounds_ok=1 reopened=1 decoded=1 denied=1 empty=0 invalid=1"));
  }
  @Test public void privateStringsNeverAppearInOutput() {
   String secret="private-token-do-not-log";
