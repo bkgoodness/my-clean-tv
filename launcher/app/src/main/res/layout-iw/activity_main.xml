@@ -397,6 +397,12 @@
             </LinearLayout>
         </RelativeLayout>
 
+        <LinearLayout
+            android:id="@+id/continueWatching"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical" />
+
         <!-- The wrapper clips at the grid's edge; the grid itself must not clip so scaled tiles can overflow their cells. -->
         <FrameLayout
             android:layout_width="match_parent"

@@ -73,6 +73,26 @@ CleanYourTV as Home, or CleanYourTV to return. The original launcher must be ena
 script disabled it, run the [restore script](../README.md#restoring-your-tv) first. Some TVs provide no
 home picker.
 
+## Continue Watching
+
+Continue Watching reads entries published by apps to Android TV's Watch Next provider. Select its
+heading and choose **Allow or refresh TV listings** to grant Android's TV listings permission on the TV.
+The heading also opens app inclusion, freshness (30 days by default), sorting, and hidden-title controls.
+Hold OK on a title to hide it; select **Restore hidden titles** to bring it back. These choices stay on
+the device and never edit streaming apps' histories.
+
+The date is supplied by each app and its meaning varies by entry type: it may be a viewing time,
+release date or watchlist date. Unknown dates appear only with **All available**. Progress sorting puts
+entries without usable progress last. Some services do not publish entries visible to other apps, and
+access can be denied by the TV provider. The launcher remains offline: locally accessible artwork may
+appear; remote or unavailable artwork falls back to a title card.
+
+A hidden title uses the provider's content ID when available, otherwise its launch intent, and also a
+package/title/episode fingerprint to recognize common republished entries. Matching titles in the same
+app can therefore be hidden together; if an app changes both the identifier and the displayed metadata,
+the entry may reappear. A title without an ID or launch intent cannot be hidden reliably and the launcher
+will say so.
+
 ## Languages
 
 English, German, Danish, Spanish, Latin American Spanish, Catalan, French, Russian, Serbian (Latin), Polish, Czech, Italian, Portuguese,
