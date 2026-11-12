@@ -3,7 +3,7 @@ package com.gathin.tvhome;
 /** Temporary, explicitly requested aggregate diagnostics. Never retains row data. */
 final class WatchNextDiagnostics {
     enum Source { YOUTUBE, GOODNESSFLIX, JELLYFIN, OTHER }
-    enum Artwork { MISSING, LOCAL, HTTPS, UNSUPPORTED }
+    enum Artwork { MISSING, CONTENT, RESOURCE, HTTPS, UNSUPPORTED }
     private final Counts[] counts = new Counts[Source.values().length];
     WatchNextDiagnostics() { for (int i = 0; i < counts.length; i++) counts[i] = new Counts(); }
     static Source source(String pkg) {
@@ -15,7 +15,8 @@ final class WatchNextDiagnostics {
     static Artwork artwork(String value) {
         ContinueArtwork.Source source = ContinueArtwork.source(value);
         if (source == ContinueArtwork.Source.MISSING) return Artwork.MISSING;
-        if (source == ContinueArtwork.Source.LOCAL) return Artwork.LOCAL;
+        if (source == ContinueArtwork.Source.LOCAL) return value.trim().regionMatches(true, 0, "content:", 0, 8)
+                ? Artwork.CONTENT : Artwork.RESOURCE;
         if (source == ContinueArtwork.Source.WEB) {
             try { ArtworkNetwork.validateUrl(value.trim()); return Artwork.HTTPS; }
             catch (java.io.IOException ignored) { }
