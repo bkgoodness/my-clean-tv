@@ -172,4 +172,16 @@
     <string name="clock_format_system">System</string>
     <string name="clock_format_12">12-hour</string>
     <string name="clock_format_24">24-hour</string>
+    <string name="wallpaper_upload_add">Add from phone or computer</string>
+    <string name="wallpaper_upload_title">Local wallpaper transfer</string>
+    <string name="wallpaper_upload_starting">Starting local transfer…</string>
+    <string name="wallpaper_upload_details">Local transfers are enabled for 10 minutes. On your phone or computer, open %1$s and enter code %2$s. Use a trusted home network: transfers are not encrypted. Closing this screen stops transfers.</string>
+    <string name="wallpaper_upload_no_network">No suitable local Wi-Fi or Ethernet connection is available. Close this screen and try again.</string>
+    <string name="wallpaper_upload_close">Close and stop transfers</string>
+    <string name="wallpaper_upload_progress">Receiving image: %1$d%%</string>
+    <string name="wallpaper_upload_paired">Device paired. Choose images in the browser.</string>
+    <string name="wallpaper_upload_added">Image added to My Wallpapers.</string>
+    <string name="wallpaper_upload_duplicate">Image is already in My Wallpapers.</string>
+    <string name="wallpaper_upload_failed">Transfer failed. Check the image and available space.</string>
+    <string name="wallpaper_upload_stopped">Local transfer stopped. Close and reopen this screen to start again.</string>
 </resources>

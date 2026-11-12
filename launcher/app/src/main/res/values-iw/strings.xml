@@ -165,4 +165,16 @@
     <string name="wallpaper_delete_message">פעולה זו מסירה רק את העותק של My Clean TV.</string>
     <string name="wallpaper_delete_action">הסרה</string>
     <string name="wallpaper_delete_failed">לא ניתן להסיר את תמונת הרקע.</string>
+    <string name="wallpaper_upload_add">הוספה מטלפון או מחשב</string>
+    <string name="wallpaper_upload_title">העברת טפטים ברשת המקומית</string>
+    <string name="wallpaper_upload_starting">מפעיל העברה מקומית…</string>
+    <string name="wallpaper_upload_details">העברה מקומית פעילה למשך 10 דקות. בטלפון או במחשב יש לפתוח %1$s ולהזין את הקוד %2$s. יש להשתמש ברשת ביתית מהימנה: ההעברה אינה מוצפנת. סגירת המסך מפסיקה את ההעברה.</string>
+    <string name="wallpaper_upload_no_network">אין חיבור מתאים לרשת מקומית. יש לסגור את המסך ולנסות שוב.</string>
+    <string name="wallpaper_upload_close">סגירה והפסקת העברה</string>
+    <string name="wallpaper_upload_progress">מקבל תמונה: %1$d%%</string>
+    <string name="wallpaper_upload_paired">המכשיר צומד. יש לבחור תמונות בדפדפן.</string>
+    <string name="wallpaper_upload_added">התמונה נוספה לטפטים שלי.</string>
+    <string name="wallpaper_upload_duplicate">התמונה כבר נמצאת בטפטים שלי.</string>
+    <string name="wallpaper_upload_failed">ההעברה נכשלה. יש לבדוק את התמונה ואת השטח הפנוי.</string>
+    <string name="wallpaper_upload_stopped">ההעברה המקומית הופסקה. יש לסגור ולפתוח מחדש כדי להתחיל שוב.</string>
 </resources>

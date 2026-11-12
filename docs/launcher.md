@@ -3,7 +3,7 @@
 [Back to the README](../README.md#the-launcher)
 
 A small native home screen for Android TV: **about 572 KB**, plain Java, built for TVs with 1 GB of RAM.
-No blur, no video, no network permission, no background services. This page has the details the
+No blur, no video, and no permanent background services. The optional, user-started wallpaper uploader uses local networking. This page has the details the
 README leaves out: settings, languages, remote keys and building it yourself. Every key a theme can
 set is in [`themes/README.md`](../themes/README.md#keys), and the opt-in switches with their
 screenshots are in [`docs/switches.md`](switches.md).
@@ -63,8 +63,11 @@ The launcher's own page has these rows, top to bottom:
   to the theme default. Existing filename-based theme selections continue to work.
 
   The user collection supports JPEG, PNG and WebP, at most 100 images, 10 MiB each and 250 MiB total.
-  Import validation and duplicate detection are in place for future sources; this version does not yet
-  include an on-TV import flow or network uploader. Keep original photos separately: app-owned copies
+  Choose **Add from phone or computer**, open the displayed local URL on the same network, and enter the
+  pairing code. Select one or more images in the browser. The listener stops when the screen closes, the
+  network is lost, or ten minutes pass. Transfers use unencrypted HTTP: use only a trusted home network;
+  someone observing that network can see the code and images. Guest or isolated Wi-Fi may block access.
+  Duplicates are skipped. Keep original photos separately: app-owned copies
   survive ordinary updates but Android removes them if the app is uninstalled.
 - **Animations** on or off, and **Advanced effects** (tile lift, icon zoom and smooth ambient-colour
   transitions; they may use more memory) once animations are on.

@@ -12,6 +12,9 @@ import java.io.InputStream;
 final class WallpaperImport {
     private WallpaperImport() { }
     static WallpaperLibrary.ImportResult save(Context context, InputStream stream) throws IOException {
+        return save(context, stream, WallpaperLibrary.CommitAction::run);
+    }
+    static WallpaperLibrary.ImportResult save(Context context, InputStream stream, WallpaperLibrary.CommitGuard guard) throws IOException {
         File user = new File(context.getFilesDir(), WallpaperLibrary.USER_DIR);
         DisplayMetrics screen = context.getResources().getDisplayMetrics();
         return WallpaperLibrary.importImage(user, context.getCacheDir(), stream, (file, format) -> {
@@ -34,6 +37,6 @@ final class WallpaperImport {
                 bitmap.recycle();
                 return true;
             } catch (RuntimeException | OutOfMemoryError e) { return false; }
-        });
+        }, guard);
     }
 }

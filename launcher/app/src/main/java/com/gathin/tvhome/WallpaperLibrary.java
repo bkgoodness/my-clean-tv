@@ -23,6 +23,8 @@ final class WallpaperLibrary {
     static final String USER = "user:", THEME = "theme:", THEME_SINGLE = "theme-single";
     private static final Object LOCK = new Object();
     interface Validator { boolean valid(File file, String format); }
+    interface CommitAction { void run() throws IOException; }
+    interface CommitGuard { void commit(CommitAction action) throws IOException; }
 
     static final class Item {
         final String id;
@@ -79,8 +81,13 @@ final class WallpaperLibrary {
 
     /** A later import source provides a stream; no original file is ever modified. */
     static ImportResult importImage(File userDir, File cacheDir, InputStream source, Validator validator) throws IOException {
+        return importImage(userDir, cacheDir, source, validator, CommitAction::run);
+    }
+
+    static ImportResult importImage(File userDir, File cacheDir, InputStream source, Validator validator,
+                                    CommitGuard guard) throws IOException {
         synchronized (LOCK) {
-            if (userDir == null || cacheDir == null || source == null || validator == null) throw new IOException("Missing import source");
+            if (userDir == null || cacheDir == null || source == null || validator == null || guard == null) throw new IOException("Missing import source");
             if ((!userDir.isDirectory() && !userDir.mkdirs()) || (!cacheDir.isDirectory() && !cacheDir.mkdirs()))
                 throw new IOException("Wallpaper storage unavailable");
             File temp = File.createTempFile("wallpaper-", ".tmp", cacheDir);
@@ -115,7 +122,7 @@ final class WallpaperLibrary {
                 if (count >= MAX_COUNT || total > MAX_TOTAL - bytes) throw new IOException("Wallpaper library is full");
                 if (target.exists()) throw new IOException("Wallpaper destination already exists");
                 // Internal cache and files share a filesystem. If atomic move is unavailable, fail safely.
-                Files.move(temp.toPath(), target.toPath(), StandardCopyOption.ATOMIC_MOVE);
+                guard.commit(() -> Files.move(temp.toPath(), target.toPath(), StandardCopyOption.ATOMIC_MOVE));
                 return new ImportResult(target, false);
             } finally { if (temp.exists()) temp.delete(); }
         }

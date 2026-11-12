@@ -3,6 +3,7 @@ package com.gathin.tvhome;
 import android.app.Activity;
 import android.app.AlertDialog;
 import android.content.Context;
+import android.content.Intent;
 import android.content.SharedPreferences;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
@@ -56,7 +57,9 @@ public final class WallpaperLibraryActivity extends Activity {
         controls.setOrientation(LinearLayout.HORIZONTAL);
         TextView theme = button(getString(R.string.wallpaper_theme_default));
         TextView none = button(getString(R.string.wallpaper_none));
-        controls.addView(theme); controls.addView(none); root.addView(controls);
+        TextView add = button(getString(R.string.wallpaper_upload_add));
+        controls.addView(theme); controls.addView(none); controls.addView(add); root.addView(controls);
+        add.setOnClickListener(v -> startActivity(new Intent(this, WallpaperUploadActivity.class)));
         theme.setOnClickListener(v -> select(null));
         none.setOnClickListener(v -> select(WallpaperRotation.CHOICE_NONE));
         empty = new TextView(this); empty.setText(R.string.wallpaper_library_empty); empty.setTextColor(Color.WHITE);
@@ -195,5 +198,6 @@ public final class WallpaperLibraryActivity extends Activity {
             });
         });
     }
+    @Override protected void onResume() { super.onResume(); if (grid != null) reload(); }
     @Override protected void onDestroy() { closed = true; thumbnails.shutdownNow(); super.onDestroy(); }
 }
