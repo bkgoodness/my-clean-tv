@@ -8,7 +8,15 @@ import android.content.pm.PackageManager;
 import android.database.Cursor;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
-import android.graphics.drawable.BitmapDrawable;
+import android.graphics.Canvas;
+import android.graphics.Paint;
+import android.graphics.Color;
+import android.graphics.drawable.GradientDrawable;
+import android.text.TextUtils;
+import android.util.LruCache;
+import android.view.Gravity;
+import android.widget.FrameLayout;
+import android.widget.ImageView;
 import java.io.InputStream;
 import android.media.tv.TvContract;
 import android.net.Uri;
@@ -47,12 +55,15 @@ final class ContinueWatching {
     private final ExecutorService loader = Executors.newSingleThreadExecutor();
     private final ExecutorService artwork = Executors.newSingleThreadExecutor();
     private final Handler main = new Handler(Looper.getMainLooper());
+    private final LruCache<String, Bitmap> artCache = new LruCache<String, Bitmap>(4 * 1024 * 1024) {
+        @Override protected int sizeOf(String key, Bitmap bitmap) { return bitmap.getByteCount(); }
+    };
     private List<Item> all = Collections.emptyList();
     private int generation;
-    private boolean closed;
+    private volatile boolean closed;
 
     static final class Item {
-        String pkg, appLabel, title, episode, intent, stableId, art;
+        String pkg, appLabel, title, episode, intent, stableId, poster, thumbnail;
         long engaged, position, duration;
         int type;
         String key() { return identity(pkg, stableId, intent); }
@@ -73,7 +84,7 @@ final class ContinueWatching {
         return child != null && child.requestFocus();
     }
 
-    void close() { closed = true; generation++; loader.shutdownNow(); artwork.shutdownNow(); }
+    void close() { closed = true; generation++; loader.shutdownNow(); artwork.shutdownNow(); artCache.evictAll(); }
 
     void refresh() {
         if (closed) return;
@@ -96,7 +107,7 @@ final class ContinueWatching {
                     i.type = c.getInt(3); i.engaged = c.getLong(4);
                     i.position = c.isNull(5) ? -1 : c.getLong(5); i.duration = c.isNull(6) ? -1 : c.getLong(6);
                     i.intent = c.getString(7); i.stableId = c.getString(8);
-                    i.art = c.getString(9) != null ? c.getString(9) : c.getString(10);
+                    i.poster = c.getString(9); i.thumbnail = c.getString(10);
                     if (i.pkg != null && i.title != null && !i.title.trim().isEmpty()) {
                         i.appLabel = labels.get(i.pkg);
                         if (i.appLabel == null) {
@@ -179,57 +190,110 @@ final class ContinueWatching {
             row.setLayoutManager(new LinearLayoutManager(activity, RecyclerView.HORIZONTAL, false));
             row.setAdapter(new RecyclerView.Adapter<TitleHolder>() {
                 @NonNull @Override public TitleHolder onCreateViewHolder(@NonNull ViewGroup parent, int viewType) {
-                    TextView card = text("");
-                    RecyclerView.LayoutParams lp = new RecyclerView.LayoutParams(dp(210), dp(76));
-                    lp.setMarginEnd(dp(8)); card.setLayoutParams(lp); card.setMaxLines(2);
-                    return new TitleHolder(card);
+                    return new TitleHolder();
                 }
                 @Override public void onBindViewHolder(@NonNull TitleHolder holder, int index) {
-                    Item i = items.get(index);
-                    String subtitle = i.episode == null || i.episode.isEmpty() ? i.appLabel : i.episode;
-                    String pct = i.progress() < 0 ? "" : "  •  " + Math.round(i.progress() * 100) + "%";
-                    holder.card.setText(activity.getString(R.string.continue_card_text, i.title, subtitle, pct));
-                    holder.card.setCompoundDrawables(null, null, null, null);
-                    holder.card.setTag(i.art);
-                    loadArtwork(holder.card, i.art);
-                    holder.card.setOnClickListener(v -> open(i));
-                    holder.card.setOnLongClickListener(v -> { hide(i); return true; });
+                    Item item = items.get(index);
+                    String subtitle = item.episode == null || item.episode.isEmpty()
+                            ? item.appLabel : item.appLabel + " · " + item.episode;
+                    holder.title.setText(item.title);
+                    holder.subtitle.setText(subtitle);
+                    holder.card.setContentDescription(item.title + ", " + subtitle
+                            + (item.progress() < 0 ? "" : ", " + Math.round(item.progress() * 100) + "%"));
+                    holder.fallback.setText(item.appLabel);
+                    holder.fallback.setVisibility(View.VISIBLE);
+                    holder.image.setImageDrawable(null);
+                    holder.progress.setProgress(item.progress());
+                    Object token = new Object();
+                    holder.card.setTag(token);
+                    loadArtwork(holder, item.poster, item.thumbnail, token);
+                    holder.card.setOnClickListener(v -> open(item));
+                    holder.card.setOnLongClickListener(v -> { hide(item); return true; });
                 }
                 @Override public int getItemCount() { return items.size(); }
             });
-            root.addView(row, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(76)));
+            root.addView(row, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(150)));
         }
         if (hadFocus) heading.requestFocus();
     }
-    private static final class TitleHolder extends RecyclerView.ViewHolder {
-        final TextView card;
-        TitleHolder(TextView card) { super(card); this.card = card; }
+    private GradientDrawable surface(int color, int radius, int stroke) {
+        GradientDrawable result = new GradientDrawable(); result.setColor(color); result.setCornerRadius(dp(radius));
+        if (stroke != 0) result.setStroke(dp(2), stroke);
+        return result;
+    }
+    private TextView cardLine(int size, int color) {
+        TextView view = new TextView(activity); view.setTextSize(size); view.setTextColor(color);
+        view.setSingleLine(true); view.setEllipsize(TextUtils.TruncateAt.END);
+        view.setPadding(dp(6), 0, dp(6), 0); view.setGravity(Gravity.CENTER_VERTICAL);
+        return view;
+    }
+    private final class TitleHolder extends RecyclerView.ViewHolder {
+        final LinearLayout card; final FrameLayout art; final ImageView image;
+        final TextView fallback, title, subtitle; final ProgressStrip progress;
+        TitleHolder() { this(new LinearLayout(activity)); }
+        private TitleHolder(LinearLayout root) {
+            super(root); card = root; card.setOrientation(LinearLayout.VERTICAL);
+            RecyclerView.LayoutParams params = new RecyclerView.LayoutParams(dp(190), dp(150));
+            params.setMarginEnd(dp(8)); card.setLayoutParams(params);
+            card.setFocusable(true); card.setClickable(true);
+            card.setBackground(surface(0xe6202931, 8, 0));
+            card.setOnFocusChangeListener((v, focused) ->
+                    card.setForeground(surface(Color.TRANSPARENT, 8, focused ? Color.WHITE : 0)));
+            art = new FrameLayout(activity); art.setBackground(surface(0xff303b46, 8, 0));
+            art.setClipToOutline(true); card.addView(art, new LinearLayout.LayoutParams(dp(190), dp(107)));
+            image = new ImageView(activity); image.setScaleType(ImageView.ScaleType.FIT_CENTER);
+            image.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+            art.addView(image, new FrameLayout.LayoutParams(-1, -1));
+            fallback = new TextView(activity); fallback.setTextColor(0xffd8e2eb); fallback.setTextSize(16);
+            fallback.setGravity(Gravity.CENTER); fallback.setPadding(dp(10), dp(6), dp(10), dp(6));
+            fallback.setMaxLines(2); fallback.setEllipsize(TextUtils.TruncateAt.END);
+            fallback.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+            art.addView(fallback, new FrameLayout.LayoutParams(-1, -1));
+            progress = new ProgressStrip();
+            FrameLayout.LayoutParams line = new FrameLayout.LayoutParams(-1, dp(4), Gravity.BOTTOM);
+            art.addView(progress, line);
+            title = cardLine(15, Color.WHITE); subtitle = cardLine(13, 0xffc8d3dc);
+            card.addView(title, new LinearLayout.LayoutParams(-1, dp(23)));
+            card.addView(subtitle, new LinearLayout.LayoutParams(-1, dp(20)));
+        }
+    }
+    private final class ProgressStrip extends View {
+        private final Paint paint = new Paint(); private float progress = -1;
+        ProgressStrip() { super(activity); setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO); }
+        void setProgress(float value) { progress = value; setVisibility(value < 0 ? View.GONE : View.VISIBLE); invalidate(); }
+        @Override protected void onDraw(Canvas canvas) {
+            super.onDraw(canvas); paint.setColor(0x99000000); canvas.drawRect(0, 0, getWidth(), getHeight(), paint);
+            paint.setColor(Color.WHITE); canvas.drawRect(0, 0, getWidth() * progress, getHeight(), paint);
+        }
     }
 
-    private void loadArtwork(TextView card, String address) {
-        if (closed || address == null) return;
-        Uri uri = Uri.parse(address);
-        if (!"content".equals(uri.getScheme()) && !"android.resource".equals(uri.getScheme())) return;
+    private void loadArtwork(TitleHolder holder, String address, String thumbnail, Object token) {
+        if (closed || address == null && thumbnail == null) return;
+        List<String> candidates = ContinueArtwork.candidates(address, thumbnail);
+        if (candidates.isEmpty()) return;
         artwork.execute(() -> {
-            Bitmap image = null;
-            try {
-                BitmapFactory.Options options = new BitmapFactory.Options(); options.inJustDecodeBounds = true;
-                try (InputStream in = activity.getContentResolver().openInputStream(uri)) { BitmapFactory.decodeStream(in, null, options); }
-                if (options.outWidth > 0 && options.outHeight > 0) {
-                    options.inJustDecodeBounds = false; options.inSampleSize = 1;
-                    while (options.outWidth / options.inSampleSize > 256 || options.outHeight / options.inSampleSize > 256)
-                        options.inSampleSize *= 2;
-                    try (InputStream in = activity.getContentResolver().openInputStream(uri)) { image = BitmapFactory.decodeStream(in, null, options); }
-                }
-            } catch (Exception ignored) { }
-            Bitmap result = image;
+            Bitmap result = ContinueArtwork.firstAvailable(candidates, this::decodeArtwork);
             main.post(() -> {
-                if (closed || result == null || !card.isAttachedToWindow() || !address.equals(card.getTag())) return;
-                BitmapDrawable drawable = new BitmapDrawable(activity.getResources(), result);
-                drawable.setBounds(0, 0, dp(48), dp(48)); card.setCompoundDrawables(drawable, null, null, null);
-                card.setCompoundDrawablePadding(dp(8));
+                if (closed || result == null || !holder.card.isAttachedToWindow() || holder.card.getTag() != token) return;
+                holder.image.setImageBitmap(result); holder.fallback.setVisibility(View.GONE);
             });
         });
+    }
+    private Bitmap decodeArtwork(String address) {
+        Bitmap cached = artCache.get(address); if (cached != null) return cached;
+        try {
+            Uri uri = Uri.parse(address);
+            BitmapFactory.Options options = new BitmapFactory.Options(); options.inJustDecodeBounds = true;
+            try (InputStream in = activity.getContentResolver().openInputStream(uri)) { BitmapFactory.decodeStream(in, null, options); }
+            if (options.outWidth <= 0 || options.outHeight <= 0) return null;
+            options.inJustDecodeBounds = false; options.inSampleSize = 1;
+            while (options.outWidth / options.inSampleSize > 512 || options.outHeight / options.inSampleSize > 512)
+                options.inSampleSize *= 2;
+            Bitmap result;
+            try (InputStream in = activity.getContentResolver().openInputStream(uri)) { result = BitmapFactory.decodeStream(in, null, options); }
+            if (result != null && !closed) artCache.put(address, result);
+            return result;
+        } catch (Exception | OutOfMemoryError ignored) { return null; }
     }
     private void open(Item i) {
         Intent target = null;

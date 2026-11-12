@@ -98,8 +98,9 @@ the device and never edit streaming apps' histories.
 The date is supplied by each app and its meaning varies by entry type: it may be a viewing time,
 release date or watchlist date. Unknown dates appear only with **All available**. Progress sorting puts
 entries without usable progress last. Some services do not publish entries visible to other apps, and
-access can be denied by the TV provider. The launcher remains offline: locally accessible artwork may
-appear; remote or unavailable artwork falls back to a title card.
+access can be denied by the TV provider. Cards use locally accessible poster art or, if it is unavailable,
+the thumbnail. Remote and inaccessible artwork is not fetched; the card instead shows the streaming app
+and title. The artwork's proportions are preserved, and available playback progress appears on the image.
 
 A hidden title uses the provider's content ID when available, otherwise its launch intent, and also a
 package/title/episode fingerprint to recognize common republished entries. Matching titles in the same
